@@ -151,21 +151,13 @@ local function AutoWin()
 
                             task.wait()
 
-                            for attempt = 1, 5 do
-                                local screenPos, onScreen = cam:WorldToViewportPoint(headPos)
-                                if onScreen then
-                                    local mousePos = UIS:GetMouseLocation()
-                                    local dx = screenPos.X - mousePos.X
-                                    local dy = screenPos.Y - mousePos.Y
-                                    if math.abs(dx) < 3 and math.abs(dy) < 3 then
-                                        break
-                                    end
-                                    if mousemoverel then
-                                        mousemoverel(dx, dy)
-                                    end
-                                    task.wait()
-                                else
-                                    break
+                            local screenPos, onScreen = cam:WorldToViewportPoint(headPos)
+                            if onScreen then
+                                local mousePos = UIS:GetMouseLocation()
+                                local dx = screenPos.X - mousePos.X
+                                local dy = screenPos.Y - mousePos.Y
+                                if mousemoverel then
+                                    mousemoverel(dx, dy)
                                 end
                             end
 

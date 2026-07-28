@@ -135,6 +135,10 @@ local function AutoWin()
                         local cam = workspace.CurrentCamera
                         while S.AutoWin do
                             if not best or not best.Parent then break end
+                            if S.TeamCheck then
+                                local plr = Players:GetPlayerFromCharacter(best)
+                                if plr and not canDamage(plr) then break end
+                            end
                             targetRoot = best:FindFirstChild("HumanoidRootPart")
                             targetHum = best:FindFirstChildOfClass("Humanoid")
                             targetHead = best:FindFirstChild("Head")
@@ -146,19 +150,23 @@ local function AutoWin()
 
                             local headPos = targetHead.Position
                             local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 2) + Vector3.new(0, 0.5, 0)
+
                             r.CFrame = CFrame.new(behindPos, headPos)
                             r.AssemblyLinearVelocity = Vector3.new(0,0,0)
                             r.AssemblyAngularVelocity = Vector3.new(0,0,0)
 
+                            cam.CFrame = CFrame.new(r.Position + Vector3.new(0,1.5,0), headPos)
+
                             if mousemoverel then
                                 local screenPos = cam:WorldToViewportPoint(headPos)
-                                local mousePos = UIS:GetMouseLocation()
-                                local dx = screenPos.X - mousePos.X
-                                local dy = screenPos.Y - mousePos.Y
-                                mousemoverel(dx, dy)
+                                if screenPos.Z > 0 then
+                                    local mousePos = UIS:GetMouseLocation()
+                                    mousemoverel(screenPos.X - mousePos.X, screenPos.Y - mousePos.Y)
+                                end
                             end
+
                             pcall(function() if mouse1click then mouse1click() end end)
-                            task.wait(0.08)
+                            task.wait(0.06)
                         end
                         local c = LP.Character
                         local r = c and c:FindFirstChild("HumanoidRootPart")

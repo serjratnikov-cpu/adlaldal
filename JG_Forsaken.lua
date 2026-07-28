@@ -318,25 +318,16 @@ task.spawn(function()
                         end
                         if not isMain then
                             rmAllGenESP(obj)
+                        else
+                            local gb = obj:FindFirstChild("_GB") if gb then gb:Destroy() end
                         end
                     end
                 end
                 
                 for _, o in pairs(genCache) do
                     if o and o.Parent then
-                        local pos
-                        if o:IsA("Model") then
-                            local part = o.PrimaryPart or o:FindFirstChildWhichIsA("BasePart")
-                            if part then pos = part.Position end
-                        elseif o:IsA("BasePart") then
-                            pos = o.Position
-                        end
-                        if pos then
-                            local dist = mh and mathfloor((mh.Position - pos).Magnitude) or 0
-                            aHL(o, "_GH", Color3RGB(255,200,0), Color3RGB(255,160,0))
-                            local ad = o:IsA("Model") and (o.PrimaryPart or o:FindFirstChildWhichIsA("BasePart")) or o
-                            aBB(o, "_GB", "[Gen] "..dist.."m", Color3RGB(255,240,60), ad)
-                        end
+                        aHL(o, "_GH", Color3RGB(255,200,0), Color3RGB(255,160,0))
+                        local gb = o:FindFirstChild("_GB") if gb then gb:Destroy() end
                     end
                 end
             end

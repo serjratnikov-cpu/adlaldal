@@ -40,10 +40,7 @@ local function rmAllGenESP(obj)
     end)
 end
 
--- ===== ITEM ESP (ПОЛНОСТЬЮ ПЕРЕПИСАНО) =====
--- В Forsaken в стандартных раундах спавнятся ТОЛЬКО: Medkit и Bloxy Cola (Tool объекты)
--- Приватный сервер: Flashlight, Epicsauce, Glock, AssaultRifle, Broadsword, GravityGun, GreenKey, FakeBloxyCola, FakeMedkit, Bloxiade, BloxyColaTest
-
+-- ===== ITEM ESP =====
 local ITEM_NAMES = {
     ["Medkit"]          = {fill = Color3RGB(0, 255, 100),  outline = Color3RGB(0, 200, 80),   label = "Medkit"},
     ["Bloxy Cola"]      = {fill = Color3RGB(0, 170, 255),  outline = Color3RGB(0, 130, 220),  label = "Bloxy Cola"},
@@ -60,26 +57,22 @@ local ITEM_NAMES = {
     ["Green Key"]       = {fill = Color3RGB(0, 255, 100),  outline = Color3RGB(0, 200, 80),   label = "Green Key"},
 }
 
--- Быстрый поиск по lower-case
 local ITEM_LOOKUP = {}
 for name, info in pairs(ITEM_NAMES) do
     ITEM_LOOKUP[name:lower()] = info
 end
 
-local itemESPCache = {} -- [Tool] = {highlight, billboard, textLabel, part}
+local itemESPCache = {}
+local cachedItems = {}
 
-local function getItemInfo(toolName)
-    return ITEM_LOOKUP[toolName:lower()]
-end
+local function getItemInfo(toolName) return ITEM_LOOKUP[toolName:lower()] end
 
 local function isItemOnMap(tool)
     if not tool or not tool.Parent then return false end
     if not tool:IsA("Tool") then return false end
-    -- Предмет на карте = лежит в workspace (не в персонаже, не в Backpack)
     if tool:IsDescendantOf(Players) then return false end
     local p = tool.Parent
-    if p:IsA("Backpack") then return false end
-    if p:FindFirstChildOfClass("Humanoid") then return false end
+    if p:IsA("Backpack") or p:FindFirstChildOfClass("Humanoid") then return false end
     return tool:IsDescendantOf(workspace)
 end
 
@@ -149,9 +142,6 @@ local function clearAllItemESP()
     itemESPCache = {}
 end
 
--- Кешированный список предметов, обновляется в отдельном потоке чтобы не лагать
-local cachedItems = {} -- {tool1, tool2, ...}
-
 task.spawn(function()
     while true do
         local newList = {}
@@ -163,27 +153,8 @@ task.spawn(function()
             end
         end)
         cachedItems = newList
-        task.wait(2) -- Сканируем раз в 2 секунды — никаких лагов
+        task.wait(2)
     end
-end)
-
--- Также подписываемся на добавление новых объектов для мгновенного обнаружения
-pcall(function()
-    workspace.DescendantAdded:Connect(function(obj)
-        if obj:IsA("Tool") and getItemInfo(obj.Name) then
-            task.delay(0.1, function()
-                if isItemOnMap(obj) then
-                    local found = false
-                    for _, t in pairs(cachedItems) do
-                        if t == obj then found = true break end
-                    end
-                    if not found then
-                        table_insert(cachedItems, obj)
-                    end
-                end
-            end)
-        end
-    end)
 end)
 
 local function updateItemESP()
@@ -195,18 +166,13 @@ local function updateItemESP()
     local myChar = LP.Character
     local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
 
-    -- Собираем текущие живые предметы
     local alive = {}
     for _, tool in pairs(cachedItems) do
         if tool and tool.Parent and isItemOnMap(tool) then
             alive[tool] = true
             local info = getItemInfo(tool.Name)
             if info then
-                -- Добавить ESP если нет
-                if not itemESPCache[tool] then
-                    addItemESP(tool, info)
-                end
-                -- Обновить текст
+                if not itemESPCache[tool] then addItemESP(tool, info) end
                 local data = itemESPCache[tool]
                 if data and data.textLabel then
                     local part = data.part
@@ -221,11 +187,8 @@ local function updateItemESP()
         end
     end
 
-    -- Удалить ESP мертвых
     for tool, _ in pairs(itemESPCache) do
-        if not alive[tool] then
-            removeItemESP(tool)
-        end
+        if not alive[tool] then removeItemESP(tool) end
     end
 end
 
@@ -252,30 +215,13 @@ local function updateHitboxes()
         local char = targets[i]
         local head = char:FindFirstChild("Head")
         if head and head:IsA("BasePart") then
-            if not hitboxOriginals[char] then
-                hitboxOriginals[char] = head.Size
-            end
+            if not hitboxOriginals[char] then hitboxOriginals[char] = head.Size end
             local sz = S.HitboxSize
             head.Size = Vector3new(sz, sz, sz)
             head.Transparency = 0.7
             head.CanCollide = false
             head.Material = Enum.Material.Neon
             head.Color = Color3RGB(255, 0, 0)
-        end
-    end
-    local aliveChars = {}
-    for i = 1, #targets do aliveChars[targets[i]] = true end
-    for char, origSize in pairs(hitboxOriginals) do
-        if not aliveChars[char] then
-            pcall(function()
-                local head = char:FindFirstChild("Head")
-                if head and head:IsA("BasePart") then
-                    head.Size = origSize
-                    head.Transparency = 0
-                    head.CanCollide = true
-                end
-            end)
-            hitboxOriginals[char] = nil
         end
     end
 end
@@ -288,10 +234,7 @@ local function teleportBehind(targetName)
     if not myRoot then return end
     local targetPlayer = nil
     for _, p in pairs(Players:GetPlayers()) do
-        if p.Name == targetName and p ~= LP then
-            targetPlayer = p
-            break
-        end
+        if p.Name == targetName and p ~= LP then targetPlayer = p break end
     end
     if not targetPlayer then return end
     local targetChar = targetPlayer.Character
@@ -315,32 +258,13 @@ end
 
 local function fireAllProximity(obj)
     pcall(function()
-        local function tryFire(d)
-            if d:IsA("ProximityPrompt") then
-                pcall(function()
-                    if fireproximityprompt then fireproximityprompt(d) end
-                end)
-            end
-        end
-        for _, d in pairs(obj:GetDescendants()) do tryFire(d) end
-        tryFire(obj)
-        if obj.Parent then
-            for _, d in pairs(obj.Parent:GetDescendants()) do tryFire(d) end
-        end
+        for _, d in pairs(obj:GetDescendants()) do if d:IsA("ProximityPrompt") then fireproximityprompt(d) end end
     end)
 end
 
 local function fireAllClicks(obj)
     pcall(function()
-        local function tryFire(d)
-            if d:IsA("ClickDetector") then
-                pcall(function()
-                    if fireclickdetector then fireclickdetector(d) end
-                end)
-            end
-        end
-        for _, d in pairs(obj:GetDescendants()) do tryFire(d) end
-        if obj:IsA("ClickDetector") then tryFire(obj) end
+        for _, d in pairs(obj:GetDescendants()) do if d:IsA("ClickDetector") then fireclickdetector(d) end end
     end)
 end
 
@@ -355,48 +279,15 @@ local function collectItem(obj, savedCFrame)
     for attempt = 1, 2 do
         if not obj or not obj.Parent then return true end
         if not isItemOnMap(obj) then return true end
-        part = getToolPart(obj)
-        if not part then return false end
-
         hrp.CFrame = CFramenew(part.Position + Vector3new(0, 1, 0))
         task.wait(0.1)
-
         fireAllProximity(obj)
         pressF()
         fireAllClicks(obj)
-
-        if obj:IsA("Tool") then
-            pcall(function() obj.Parent = c end)
-            if obj.Parent == c then return true end
-            pcall(function() obj.Parent = LP.Backpack end)
-            if obj.Parent == LP.Backpack then return true end
-        end
-
+        if obj:IsA("Tool") then pcall(function() obj.Parent = c end) end
         task.wait(0.1)
-
-        if not obj.Parent then return true end
-        for _, tool in pairs(LP.Backpack:GetChildren()) do
-            if tool == obj then return true end
-        end
-        for _, tool in pairs(c:GetChildren()) do
-            if tool == obj then return true end
-        end
     end
     return false
-end
-
-local function findItemsByNames(names)
-    local found = {}
-    local nameSet = {}
-    for _, n in pairs(names) do nameSet[n:lower()] = true end
-    for _, tool in pairs(cachedItems) do
-        if tool and tool.Parent and isItemOnMap(tool) then
-            if nameSet[tool.Name:lower()] then
-                table_insert(found, tool)
-            end
-        end
-    end
-    return found
 end
 
 local function tpBloxyCola()
@@ -406,25 +297,14 @@ local function tpBloxyCola()
     if not hrp then return end
     local sv = hrp.CFrame
     task.spawn(function()
-        local items = findItemsByNames({"Bloxy Cola", "Bloxiade", "BloxyColaTest"})
+        local items = {}
+        for _, tool in pairs(cachedItems) do
+            if tool.Name:lower():find("cola") or tool.Name:lower():find("bloxiade") then table_insert(items, tool) end
+        end
         if #items == 0 then return end
-        table.sort(items, function(a, b)
-            local pa = getToolPart(a)
-            local pb = getToolPart(b)
-            if not pa or not pb then return false end
-            return (pa.Position - hrp.Position).Magnitude < (pb.Position - hrp.Position).Magnitude
-        end)
-        for _, item in pairs(items) do
-            if item and item.Parent and isItemOnMap(item) then
-                collectItem(item, sv)
-                break
-            end
-        end
+        collectItem(items[1], sv)
         task.wait(0.1)
-        if c and c.Parent then
-            local h2 = c:FindFirstChild("HumanoidRootPart")
-            if h2 then h2.CFrame = sv end
-        end
+        hrp.CFrame = sv
     end)
 end
 
@@ -435,25 +315,12 @@ local function tpMedkit()
     if not hrp then return end
     local sv = hrp.CFrame
     task.spawn(function()
-        local items = findItemsByNames({"Medkit"})
+        local items = {}
+        for _, tool in pairs(cachedItems) do if tool.Name:lower():find("medkit") then table_insert(items, tool) end end
         if #items == 0 then return end
-        table.sort(items, function(a, b)
-            local pa = getToolPart(a)
-            local pb = getToolPart(b)
-            if not pa or not pb then return false end
-            return (pa.Position - hrp.Position).Magnitude < (pb.Position - hrp.Position).Magnitude
-        end)
-        for _, item in pairs(items) do
-            if item and item.Parent and isItemOnMap(item) then
-                collectItem(item, sv)
-                break
-            end
-        end
+        collectItem(items[1], sv)
         task.wait(0.1)
-        if c and c.Parent then
-            local h2 = c:FindFirstChild("HumanoidRootPart")
-            if h2 then h2.CFrame = sv end
-        end
+        hrp.CFrame = sv
     end)
 end
 
@@ -466,22 +333,15 @@ local function tpNearestItem()
     task.spawn(function()
         local best, bd = nil, mathhuge
         for _, tool in pairs(cachedItems) do
-            if tool and tool.Parent and isItemOnMap(tool) and getItemInfo(tool.Name) then
-                local part = getToolPart(tool)
-                if part then
-                    local d = (part.Position - hrp.Position).Magnitude
-                    if d < bd then bd = d best = tool end
-                end
+            local p = getToolPart(tool)
+            if p then
+                local d = (p.Position - hrp.Position).Magnitude
+                if d < bd then bd = d best = tool end
             end
         end
-        if best then
-            collectItem(best, sv)
-        end
+        if best then collectItem(best, sv) end
         task.wait(0.1)
-        if c and c.Parent then
-            local h2 = c:FindFirstChild("HumanoidRootPart")
-            if h2 then h2.CFrame = sv end
-        end
+        hrp.CFrame = sv
     end)
 end
 
@@ -493,62 +353,17 @@ task.spawn(function()
     while true do
         pcall(function()
             local newCache = {}
-            local allObjects = {}
-            local seenPositions = {}
-
             for _, v in pairs(workspace:GetDescendants()) do
-                if v.Name:lower():find("generator") then
-                    allObjects[v] = true
-                    if v:IsA("Model") then
-                        local part = v.PrimaryPart or v:FindFirstChildWhichIsA("BasePart")
-                        if part then
-                            local posKey = mathfloor(part.Position.X) .. "_" .. mathfloor(part.Position.Y) .. "_" .. mathfloor(part.Position.Z)
-                            if not seenPositions[posKey] then
-                                seenPositions[posKey] = true
-                                table_insert(newCache, v)
-                            end
-                        end
-                    end
+                if v.Name:lower():find("generator") and (v:IsA("Model") or v:IsA("BasePart")) then
+                    table_insert(newCache, v)
                 end
             end
-
-            for _, v in pairs(workspace:GetDescendants()) do
-                if v:IsA("BasePart") and v.Name:lower():find("generator") then
-                    local pm = v:FindFirstAncestorWhichIsA("Model")
-                    local isInsideGenModel = false
-                    if pm and pm.Name:lower():find("generator") then
-                        isInsideGenModel = true
-                    end
-                    if not isInsideGenModel then
-                        local posKey = mathfloor(v.Position.X) .. "_" .. mathfloor(v.Position.Y) .. "_" .. mathfloor(v.Position.Z)
-                        if not seenPositions[posKey] then
-                            seenPositions[posKey] = true
-                            table_insert(newCache, v)
-                        end
-                    end
-                end
-            end
-
-            for obj, _ in pairs(allGenObjects) do
-                if obj and obj.Parent then
-                    local isMain = false
-                    for _, m in pairs(newCache) do
-                        if m == obj then isMain = true break end
-                    end
-                    if not isMain then
-                        rmAllGenESP(obj)
-                    end
-                end
-            end
-
-            allGenObjects = allObjects
             genCache = newCache
         end)
         task.wait(5)
     end
 end)
 
--- ===== MAIN ESP LOOP =====
 task.spawn(function()
     while task.wait(0.5) do
         pcall(function()
@@ -560,95 +375,29 @@ task.spawn(function()
 
             if killersF then
                 for _, child in pairs(killersF:GetChildren()) do
-                    pcall(function()
-                        if not child:FindFirstChild("HumanoidRootPart") then return end
-                        local dist = mh and mathfloor((mh.Position - child.HumanoidRootPart.Position).Magnitude) or 0
-                        local hd = child:FindFirstChild("Head") or child.HumanoidRootPart
-                        if S.KillerESP then
-                            aHL(child, "_KH", Color3RGB(255, 0, 0), Color3RGB(255, 0, 0))
-                            aBB(child, "_KB", "[Killer] " .. child.Name .. " [" .. dist .. "m]", Color3RGB(255, 40, 40), hd)
-                        else
-                            rm(child, "_KH", "_KB")
-                        end
-                    end)
+                    if not child:FindFirstChild("HumanoidRootPart") then continue end
+                    local dist = mh and mathfloor((mh.Position - child.HumanoidRootPart.Position).Magnitude) or 0
+                    if S.KillerESP then aHL(child, "_KH", Color3RGB(255, 0, 0), Color3RGB(255, 0, 0)) aBB(child, "_KB", "[Killer] "..child.Name.." ["..dist.."m]", Color3RGB(255, 40, 40), child.PrimaryPart)
+                    else rm(child, "_KH", "_KB") end
                 end
             end
 
             if survF then
                 for _, child in pairs(survF:GetChildren()) do
-                    pcall(function()
-                        if not child:FindFirstChild("HumanoidRootPart") then return end
-                        local dist = mh and mathfloor((mh.Position - child.HumanoidRootPart.Position).Magnitude) or 0
-                        local hd = child:FindFirstChild("Head") or child.HumanoidRootPart
-                        if S.SurvESP then
-                            aHL(child, "_SH", Color3RGB(0,200,60), Color3RGB(90,255,130))
-                            aBB(child, "_SB", "[Surv] "..child.Name.." ["..dist.."m]", Color3RGB(90,255,120), hd)
-                        else
-                            rm(child, "_SH", "_SB")
-                        end
-                    end)
+                    if not child:FindFirstChild("HumanoidRootPart") then continue end
+                    local dist = mh and mathfloor((mh.Position - child.HumanoidRootPart.Position).Magnitude) or 0
+                    if S.SurvESP then aHL(child, "_SH", Color3RGB(0,200,60), Color3RGB(90,255,130)) aBB(child, "_SB", "[Surv] "..child.Name.." ["..dist.."m]", Color3RGB(90,255,120), child.PrimaryPart)
+                    else rm(child, "_SH", "_SB") end
                 end
             end
 
-            -- Generator ESP
-            if not S.GenESP then
-                for obj, _ in pairs(allGenObjects) do
-                    if obj and obj.Parent then
-                        rmAllGenESP(obj)
-                    end
-                end
-            else
-                for obj, _ in pairs(allGenObjects) do
-                    if obj and obj.Parent then
-                        local isMain = false
-                        for _, m in pairs(genCache) do
-                            if m == obj then isMain = true break end
-                        end
-                        if not isMain then
-                            rmAllGenESP(obj)
-                        else
-                            local gb = obj:FindFirstChild("_GB") if gb then gb:Destroy() end
-                        end
-                    end
-                end
-
-                for _, o in pairs(genCache) do
-                    if o and o.Parent then
-                        aHL(o, "_GH", Color3RGB(255,200,0), Color3RGB(255,160,0))
-                        local gb = o:FindFirstChild("_GB") if gb then gb:Destroy() end
-                    end
-                end
+            if S.GenESP then
+                for _, o in pairs(genCache) do aHL(o, "_GH", Color3RGB(255,200,0), Color3RGB(255,160,0)) end
             end
-
-            -- Item ESP
             updateItemESP()
         end)
     end
 end)
-
--- ===== UTILITY =====
-local function getPlayerListForDropdown()
-    local list = {}
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LP then
-            local ch = p.Character
-            if ch and ch:FindFirstChildOfClass("Humanoid") and ch:FindFirstChildOfClass("Humanoid").Health > 0 then
-                table_insert(list, p.Name)
-            end
-        end
-    end
-    return list
-end
-
-local function clearHitboxes()
-    for char, origSize in pairs(hitboxOriginals) do
-        pcall(function()
-            local head = char:FindFirstChild("Head")
-            if head and head:IsA("BasePart") then head.Size = origSize head.Transparency = 0 end
-        end)
-    end
-    hitboxOriginals = {}
-end
 
 return {
     updateHitboxes = updateHitboxes,
@@ -656,8 +405,12 @@ return {
     tpBloxyCola = tpBloxyCola,
     tpMedkit = tpMedkit,
     tpNearestItem = tpNearestItem,
-    getPlayerListForDropdown = getPlayerListForDropdown,
-    clearHitboxes = clearHitboxes,
+    getPlayerListForDropdown = function()
+        local list = {}
+        for _, p in pairs(Players:GetPlayers()) do if p ~= LP then table_insert(list, p.Name) end end
+        return list
+    end,
+    clearHitboxes = function() end,
     clearAllItemESP = clearAllItemESP,
 }
 end

@@ -1,5 +1,7 @@
 return function(S, getTargets, isValid, Players, LP, mathhuge, mathfloor, Vector3new, CFramenew, Color3RGB, task, pcall, workspace, table_insert)
 
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
 local function aHL(p,n,fc,oc)
     if p:FindFirstChild(n) then return end
     local h=Instance.new("Highlight") h.Name=n h.FillColor=fc h.FillTransparency=0.4
@@ -133,6 +135,60 @@ local function isItemAvailable(obj)
     return true
 end
 
+local function pressF()
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+        task.wait(0.08)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+    end)
+end
+
+local function fireAllProximity(obj)
+    pcall(function()
+        for _, d in pairs(obj:GetDescendants()) do
+            if d:IsA("ProximityPrompt") then
+                pcall(function()
+                    if fireproximityprompt then
+                        fireproximityprompt(d)
+                    end
+                end)
+            end
+        end
+        if obj:IsA("ProximityPrompt") then
+            pcall(function()
+                if fireproximityprompt then fireproximityprompt(obj) end
+            end)
+        end
+        local parent = obj.Parent
+        if parent then
+            for _, d in pairs(parent:GetDescendants()) do
+                if d:IsA("ProximityPrompt") then
+                    pcall(function()
+                        if fireproximityprompt then fireproximityprompt(d) end
+                    end)
+                end
+            end
+        end
+    end)
+end
+
+local function fireAllClicks(obj)
+    pcall(function()
+        for _, d in pairs(obj:GetDescendants()) do
+            if d:IsA("ClickDetector") then
+                pcall(function()
+                    if fireclickdetector then fireclickdetector(d) end
+                end)
+            end
+        end
+        if obj:IsA("ClickDetector") then
+            pcall(function()
+                if fireclickdetector then fireclickdetector(obj) end
+            end)
+        end
+    end)
+end
+
 local function collectItem(obj, savedCFrame)
     local c = LP.Character
     if not c then return false end
@@ -140,58 +196,53 @@ local function collectItem(obj, savedCFrame)
     if not hrp then return false end
     local part = findItemPart(obj)
     if not part then return false end
-    local origCFrame = hrp.CFrame
-    if savedCFrame then origCFrame = savedCFrame end
     
-    for attempt = 1, 3 do
-        if not obj.Parent or not isItemAvailable(obj) then break end
+    for attempt = 1, 4 do
+        if not obj or not obj.Parent then break end
+        if not isItemAvailable(obj) then break end
         part = findItemPart(obj)
         if not part then break end
         
-        local tpCFrame = CFramenew(part.Position + Vector3new(0, 2, 0))
-        hrp.CFrame = tpCFrame
+        hrp.CFrame = CFramenew(part.Position + Vector3new(0, 2, 0))
+        task.wait(0.2)
+        
+        fireAllProximity(obj)
+        task.wait(0.15)
+        pressF()
+        task.wait(0.15)
+        pressF()
         task.wait(0.15)
         
-        local prox = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-        if prox then
-            pcall(function()
-                fireproximityprompt(prox)
-            end)
-            task.wait(0.4)
-        end
-        
-        local ce = obj:FindFirstChildWhichIsA("ClickDetector", true)
-        if ce then
-            pcall(function()
-                fireclickdetector(ce)
-            end)
-            task.wait(0.3)
-        end
+        fireAllClicks(obj)
+        task.wait(0.1)
         
         if obj:IsA("Tool") then
             pcall(function() obj.Parent = c end)
-            task.wait(0.2)
-            if obj.Parent == c or obj.Parent == LP.Backpack then break end
+            task.wait(0.15)
+            if obj.Parent == c then return true end
             pcall(function() obj.Parent = LP.Backpack end)
-            task.wait(0.2)
-            if obj.Parent == LP.Backpack then break end
+            task.wait(0.15)
+            if obj.Parent == LP.Backpack then return true end
         end
         
-        if part then
+        if part and obj.Parent then
             hrp.CFrame = CFramenew(part.Position)
-            task.wait(0.1)
-            local hum = c:FindFirstChildOfClass("Humanoid")
-            if hum then
-                for _, tool in pairs(LP.Backpack:GetChildren()) do
-                    if tool == obj then return true end
-                end
-            end
+            task.wait(0.15)
+            pressF()
+            task.wait(0.2)
         end
         
-        task.wait(0.15)
+        for _, tool in pairs(LP.Backpack:GetChildren()) do
+            if tool == obj then return true end
+        end
+        for _, tool in pairs(c:GetChildren()) do
+            if tool == obj then return true end
+        end
+        
+        if not obj.Parent then return true end
     end
     
-    return obj and (obj.Parent == c or obj.Parent == LP.Backpack)
+    return obj and (obj.Parent == c or obj.Parent == LP.Backpack) or (obj and not obj.Parent)
 end
 
 local function findItemsByKeywords(keywords)
@@ -222,7 +273,6 @@ local function tpBloxyCola()
         local keywords = {"bloxy", "cola", "bloxiade", "soda"}
         local items = findItemsByKeywords(keywords)
         if #items == 0 then
-            hrp.CFrame = sv
             return
         end
         table.sort(items, function(a, b)
@@ -234,11 +284,10 @@ local function tpBloxyCola()
         for _, item in pairs(items) do
             if item and item.Parent and isItemAvailable(item) then
                 collectItem(item, sv)
-                task.wait(0.1)
                 break
             end
         end
-        task.wait(0.2)
+        task.wait(0.15)
         if c and c.Parent then
             local h2 = c:FindFirstChild("HumanoidRootPart")
             if h2 then h2.CFrame = sv end
@@ -256,7 +305,6 @@ local function tpMedkit()
         local keywords = {"medkit", "med_kit", "med kit", "firstaid", "first_aid", "first aid", "bandage", "healthkit", "health_kit", "medical"}
         local items = findItemsByKeywords(keywords)
         if #items == 0 then
-            hrp.CFrame = sv
             return
         end
         table.sort(items, function(a, b)
@@ -268,11 +316,10 @@ local function tpMedkit()
         for _, item in pairs(items) do
             if item and item.Parent and isItemAvailable(item) then
                 collectItem(item, sv)
-                task.wait(0.1)
                 break
             end
         end
-        task.wait(0.2)
+        task.wait(0.15)
         if c and c.Parent then
             local h2 = c:FindFirstChild("HumanoidRootPart")
             if h2 then h2.CFrame = sv end
@@ -288,7 +335,7 @@ local function tpNearestItem()
     local sv = hrp.CFrame
     task.spawn(function()
         local best, bd = nil, mathhuge
-        local itemKeywords = {"bloxy", "cola", "bloxiade", "soda", "medkit", "med_kit", "med kit", "firstaid", "first_aid", "first aid", "bandage", "healthkit", "health_kit", "medical", "battery", "key", "item", "pickup"}
+        local itemKeywords = {"bloxy", "cola", "bloxiade", "soda", "medkit", "med_kit", "med kit", "firstaid", "first_aid", "first aid", "bandage", "healthkit", "health_kit", "medical", "battery", "key", "pickup"}
         for _, o in pairs(workspace:GetDescendants()) do
             pcall(function()
                 if isItemAvailable(o) then
@@ -310,8 +357,8 @@ local function tpNearestItem()
         end
         if best then
             collectItem(best, sv)
-            task.wait(0.2)
         end
+        task.wait(0.15)
         if c and c.Parent then
             local h2 = c:FindFirstChild("HumanoidRootPart")
             if h2 then h2.CFrame = sv end

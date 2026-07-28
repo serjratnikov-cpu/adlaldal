@@ -1,8 +1,8 @@
 return function(S, getTargets, isValid, Players, LP, mathhuge, mathfloor, Vector3new, CFramenew, Color3RGB, task, pcall, workspace, table_insert)
 
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local RS = game:GetService("RunService")
 
--- ===== ESP HELPERS =====
 local function aHL(p,n,fc,oc)
     if p:FindFirstChild(n) then return end
     local h=Instance.new("Highlight") h.Name=n h.FillColor=fc h.FillTransparency=0.4
@@ -31,16 +31,13 @@ end
 local function rmAllGenESP(obj)
     pcall(function()
         for _, d in pairs(obj:GetDescendants()) do
-            if d.Name == "_GH" or d.Name == "_GB" then
-                d:Destroy()
-            end
+            if d.Name == "_GH" or d.Name == "_GB" then d:Destroy() end
         end
         local a = obj:FindFirstChild("_GH") if a then a:Destroy() end
         local b = obj:FindFirstChild("_GB") if b then b:Destroy() end
     end)
 end
 
--- ===== ITEM ESP =====
 local ITEM_NAMES = {
     ["Medkit"]          = {fill = Color3RGB(0, 255, 100),  outline = Color3RGB(0, 200, 80),   label = "Medkit"},
     ["Bloxy Cola"]      = {fill = Color3RGB(0, 170, 255),  outline = Color3RGB(0, 130, 220),  label = "Bloxy Cola"},
@@ -90,7 +87,6 @@ local function addItemESP(tool, info)
     if itemESPCache[tool] then return end
     local part = getToolPart(tool)
     if not part then return end
-
     local hl = Instance.new("Highlight")
     hl.Name = "_IH"
     hl.FillColor = info.fill
@@ -99,7 +95,6 @@ local function addItemESP(tool, info)
     hl.OutlineTransparency = 0
     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     hl.Parent = tool
-
     local bb = Instance.new("BillboardGui")
     bb.Name = "_IB"
     bb.Adornee = part
@@ -108,7 +103,6 @@ local function addItemESP(tool, info)
     bb.AlwaysOnTop = true
     bb.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     bb.Parent = tool
-
     local tl = Instance.new("TextLabel")
     tl.Parent = bb
     tl.BackgroundTransparency = 1
@@ -121,7 +115,6 @@ local function addItemESP(tool, info)
     tl.TextStrokeColor3 = Color3RGB(0, 0, 0)
     tl.ZIndex = 10
     tl.Text = info.label
-
     itemESPCache[tool] = {highlight = hl, billboard = bb, textLabel = tl, part = part, info = info}
 end
 
@@ -162,10 +155,8 @@ local function updateItemESP()
         clearAllItemESP()
         return
     end
-
     local myChar = LP.Character
     local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
-
     local alive = {}
     for _, tool in pairs(cachedItems) do
         if tool and tool.Parent and isItemOnMap(tool) then
@@ -186,13 +177,11 @@ local function updateItemESP()
             end
         end
     end
-
     for tool, _ in pairs(itemESPCache) do
         if not alive[tool] then removeItemESP(tool) end
     end
 end
 
--- ===== HITBOX =====
 local hitboxOriginals = {}
 
 local function updateHitboxes()
@@ -226,7 +215,6 @@ local function updateHitboxes()
     end
 end
 
--- ===== TELEPORT BEHIND =====
 local function teleportBehind(targetName)
     local myChar = LP.Character
     if not myChar then return end
@@ -247,7 +235,6 @@ local function teleportBehind(targetName)
     myRoot.CFrame = CFramenew(behindPos, targetRoot.Position)
 end
 
--- ===== ITEM COLLECTION =====
 local function pressF()
     pcall(function()
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
@@ -275,7 +262,6 @@ local function collectItem(obj, savedCFrame)
     if not hrp then return false end
     local part = getToolPart(obj)
     if not part then return false end
-
     for attempt = 1, 2 do
         if not obj or not obj.Parent then return true end
         if not isItemOnMap(obj) then return true end
@@ -345,9 +331,7 @@ local function tpNearestItem()
     end)
 end
 
--- ===== GENERATOR ESP =====
 local genCache = {}
-local allGenObjects = {}
 
 task.spawn(function()
     while true do
@@ -364,9 +348,79 @@ task.spawn(function()
     end
 end)
 
+local staminaHooked = {}
+
+local function hookStaminaOnChar(char)
+    local function tryHook(obj)
+        local n = obj.Name:lower()
+        if (n:find("stamina") or n:find("energy") or n:find("sprint")) and (obj:IsA("NumberValue") or obj:IsA("IntValue") or obj:IsA("DoubleConstrainedValue")) then
+            if staminaHooked[obj] then return end
+            staminaHooked[obj] = true
+            obj:GetPropertyChangedSignal("Value"):Connect(function()
+                if S.InfStamina then
+                    pcall(function() obj.Value = 100 end)
+                end
+            end)
+        end
+    end
+    pcall(function()
+        for _, v in pairs(char:GetDescendants()) do tryHook(v) end
+        char.DescendantAdded:Connect(tryHook)
+        local ps = LP:FindFirstChild("PlayerScripts")
+        if ps then
+            for _, v in pairs(ps:GetDescendants()) do tryHook(v) end
+        end
+    end)
+end
+
+local infStaminaConn
+
+local function startInfStamina()
+    if infStaminaConn then infStaminaConn:Disconnect() infStaminaConn = nil end
+    infStaminaConn = RS.Heartbeat:Connect(function()
+        if not S.InfStamina then
+            infStaminaConn:Disconnect()
+            infStaminaConn = nil
+            return
+        end
+        pcall(function()
+            local char = LP.Character
+            if not char then return end
+            for _, v in pairs(char:GetDescendants()) do
+                local n = v.Name:lower()
+                if (n:find("stamina") or n:find("energy") or n:find("sprint")) and (v:IsA("NumberValue") or v:IsA("IntValue") or v:IsA("DoubleConstrainedValue")) then
+                    v.Value = 100
+                end
+            end
+            local ps = LP:FindFirstChild("PlayerScripts")
+            if ps then
+                for _, v in pairs(ps:GetDescendants()) do
+                    local n = v.Name:lower()
+                    if (n:find("stamina") or n:find("energy") or n:find("sprint")) and (v:IsA("NumberValue") or v:IsA("IntValue") or v:IsA("DoubleConstrainedValue")) then
+                        v.Value = 100
+                    end
+                end
+            end
+        end)
+    end)
+end
+
+pcall(function()
+    local c = LP.Character
+    if c then hookStaminaOnChar(c) end
+    LP.CharacterAdded:Connect(function(char)
+        staminaHooked = {}
+        hookStaminaOnChar(char)
+    end)
+end)
+
 task.spawn(function()
     while task.wait(0.5) do
         pcall(function()
+            if S.InfStamina and not infStaminaConn then
+                startInfStamina()
+            end
+
             local mc = LP.Character
             local mh = mc and mc:FindFirstChild("HumanoidRootPart")
             local wp = workspace:FindFirstChild("Players")
@@ -394,6 +448,7 @@ task.spawn(function()
             if S.GenESP then
                 for _, o in pairs(genCache) do aHL(o, "_GH", Color3RGB(255,200,0), Color3RGB(255,160,0)) end
             end
+
             updateItemESP()
         end)
     end
@@ -405,6 +460,7 @@ return {
     tpBloxyCola = tpBloxyCola,
     tpMedkit = tpMedkit,
     tpNearestItem = tpNearestItem,
+    startInfStamina = startInfStamina,
     getPlayerListForDropdown = function()
         local list = {}
         for _, p in pairs(Players:GetPlayers()) do if p ~= LP then table_insert(list, p.Name) end end

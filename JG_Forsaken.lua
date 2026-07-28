@@ -114,8 +114,7 @@ local function AutoWin()
                 local best, bd = nil, mathhuge
                 for i = 1, #targets do
                     local char = targets[i]
-                    local ok = isValid(char)
-                    if ok then
+                    if isValid(char) then
                         local r = char:FindFirstChild("HumanoidRootPart")
                         if r then
                             local d = (r.Position - myRoot.Position).Magnitude
@@ -128,36 +127,33 @@ local function AutoWin()
                 else
                     local targetRoot = best:FindFirstChild("HumanoidRootPart")
                     local targetHum = best:FindFirstChildOfClass("Humanoid")
-                    if targetRoot and targetHum and targetHum.Health > 0 then
+                    local targetHead = best:FindFirstChild("Head")
+                    if targetRoot and targetHum and targetHum.Health > 0 and targetHead then
                         local startCF = myRoot.CFrame
                         local cam = workspace.CurrentCamera
                         while S.AutoWin and targetHum and targetHum.Parent and targetHum.Health > 0 and targetRoot.Parent do
                             local c = LP.Character
                             local r = c and c:FindFirstChild("HumanoidRootPart")
                             if not r then break end
-                            local head = best:FindFirstChild("Head") or targetRoot
-                            local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 3.5) + Vector3new(0, 1.2, 0)
-                            r.CFrame = CFramenew(behindPos, head.Position)
-                            cam.CFrame = CFramenew(r.Position + Vector3new(0, 1.5, 0), head.Position)
-                            local sp = cam:WorldToScreenPoint(head.Position)
-                            if sp.Z > 0 then
-                                local vp = cam.ViewportSize
-                                local dx = sp.X - vp.X * 0.5
-                                local dy = sp.Y - vp.Y * 0.5
-                                if mousemoverel then
-                                    mousemoverel(dx, dy)
-                                end
+                            
+                            local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 3.5) + Vector3.new(0, 1.2, 0)
+                            r.CFrame = CFrame.new(behindPos, targetHead.Position)
+                            
+                            cam.CFrame = CFrame.new(cam.CFrame.Position, targetHead.Position)
+                            
+                            local screenPos, onScreen = cam:WorldToViewportPoint(targetHead.Position)
+                            if onScreen then
+                                local mousePos = UIS:GetMouseLocation()
+                                mousemoverel(screenPos.X - mousePos.X, screenPos.Y - mousePos.Y)
                             end
+
+                            task.wait(0.01)
+                            if mouse1click then mouse1click() end
                             task.wait(0.05)
-                            pcall(function() if mouse1click then mouse1click() end end)
-                            task.wait(0.07)
                         end
-                        task.wait(0.1)
-                        local c = LP.Character
-                        local r = c and c:FindFirstChild("HumanoidRootPart")
-                        if r then r.CFrame = startCF end
+                        if myRoot then myRoot.CFrame = startCF end
                     end
-                    task.wait(0.25)
+                    task.wait(0.1)
                 end
             end
             task.wait(0.05)

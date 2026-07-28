@@ -25,6 +25,18 @@ local function rm(p,a,b)
     local y=p:FindFirstChild(b) if y then y:Destroy() end
 end
 
+local function rmAllGenESP(obj)
+    pcall(function()
+        for _, d in pairs(obj:GetDescendants()) do
+            if d.Name == "_GH" or d.Name == "_GB" then
+                d:Destroy()
+            end
+        end
+        local a = obj:FindFirstChild("_GH") if a then a:Destroy() end
+        local b = obj:FindFirstChild("_GB") if b then b:Destroy() end
+    end)
+end
+
 local hitboxOriginals = {}
 
 local function updateHitboxes()
@@ -189,25 +201,61 @@ local function tpNearestItem()
 end
 
 local genCache = {}
+local allGenObjects = {}
+
 task.spawn(function()
     while true do
         pcall(function()
             local newCache = {}
-            local seenModels = {}
+            local allObjects = {}
+            local seenPositions = {}
+            
             for _, v in pairs(workspace:GetDescendants()) do
-                if v:IsA("Model") and v.Name:lower():find("generator") then
-                    table_insert(newCache, v)
-                    seenModels[v] = true
-                end
-            end
-            for _, v in pairs(workspace:GetDescendants()) do
-                if v:IsA("BasePart") and v.Name:lower():find("generator") then
-                    local pm = v:FindFirstAncestorWhichIsA("Model")
-                    if not pm or not seenModels[pm] then
-                        table_insert(newCache, v)
+                if v.Name:lower():find("generator") then
+                    allObjects[v] = true
+                    if v:IsA("Model") then
+                        local part = v.PrimaryPart or v:FindFirstChildWhichIsA("BasePart")
+                        if part then
+                            local posKey = mathfloor(part.Position.X) .. "_" .. mathfloor(part.Position.Y) .. "_" .. mathfloor(part.Position.Z)
+                            if not seenPositions[posKey] then
+                                seenPositions[posKey] = true
+                                table_insert(newCache, v)
+                            end
+                        end
                     end
                 end
             end
+            
+            for _, v in pairs(workspace:GetDescendants()) do
+                if v:IsA("BasePart") and v.Name:lower():find("generator") then
+                    local pm = v:FindFirstAncestorWhichIsA("Model")
+                    local isInsideGenModel = false
+                    if pm and pm.Name:lower():find("generator") then
+                        isInsideGenModel = true
+                    end
+                    if not isInsideGenModel then
+                        local posKey = mathfloor(v.Position.X) .. "_" .. mathfloor(v.Position.Y) .. "_" .. mathfloor(v.Position.Z)
+                        if not seenPositions[posKey] then
+                            seenPositions[posKey] = true
+                            table_insert(newCache, v)
+                        end
+                    end
+                end
+            end
+            
+            for obj, _ in pairs(allGenObjects) do
+                if obj and obj.Parent then
+                    local isMain = false
+                    for _, m in pairs(newCache) do
+                        if m == obj then isMain = true break end
+                    end
+                    if not isMain then
+                        rmAllGenESP(obj)
+                    end
+                end
+            end
+            
+            allGenObjects = allObjects
             genCache = newCache
         end)
         task.wait(5)
@@ -255,38 +303,40 @@ task.spawn(function()
                 end
             end
 
-            local processedGens = {}
-            for _, o in pairs(genCache) do
-                if o and o.Parent then
-                    local mainObj = o
-                    if o:IsA("BasePart") then
-                        local pm = o:FindFirstAncestorWhichIsA("Model")
-                        if pm and pm.Name:lower():find("generator") then
-                            mainObj = pm
+            if not S.GenESP then
+                for obj, _ in pairs(allGenObjects) do
+                    if obj and obj.Parent then
+                        rmAllGenESP(obj)
+                    end
+                end
+            else
+                for obj, _ in pairs(allGenObjects) do
+                    if obj and obj.Parent then
+                        local isMain = false
+                        for _, m in pairs(genCache) do
+                            if m == obj then isMain = true break end
+                        end
+                        if not isMain then
+                            rmAllGenESP(obj)
                         end
                     end
-                    if not processedGens[mainObj] then
-                        processedGens[mainObj] = true
-                        if S.GenESP then
-                            local pos
-                            if mainObj:IsA("Model") then
-                                local part = mainObj.PrimaryPart or mainObj:FindFirstChildWhichIsA("BasePart")
-                                if part then pos = part.Position end
-                            elseif mainObj:IsA("BasePart") then
-                                pos = mainObj.Position
-                            end
-                            if pos then
-                                local dist = mh and mathfloor((mh.Position - pos).Magnitude) or 0
-                                aHL(mainObj, "_GH", Color3RGB(255,200,0), Color3RGB(255,160,0))
-                                local ad = mainObj:IsA("Model") and (mainObj.PrimaryPart or mainObj:FindFirstChildWhichIsA("BasePart")) or mainObj
-                                aBB(mainObj, "_GB", "[Gen] "..dist.."m", Color3RGB(255,240,60), ad)
-                            end
-                        else
-                            rm(mainObj, "_GH", "_GB")
+                end
+                
+                for _, o in pairs(genCache) do
+                    if o and o.Parent then
+                        local pos
+                        if o:IsA("Model") then
+                            local part = o.PrimaryPart or o:FindFirstChildWhichIsA("BasePart")
+                            if part then pos = part.Position end
+                        elseif o:IsA("BasePart") then
+                            pos = o.Position
                         end
-                    end
-                    if mainObj ~= o then
-                        rm(o, "_GH", "_GB")
+                        if pos then
+                            local dist = mh and mathfloor((mh.Position - pos).Magnitude) or 0
+                            aHL(o, "_GH", Color3RGB(255,200,0), Color3RGB(255,160,0))
+                            local ad = o:IsA("Model") and (o.PrimaryPart or o:FindFirstChildWhichIsA("BasePart")) or o
+                            aBB(o, "_GB", "[Gen] "..dist.."m", Color3RGB(255,240,60), ad)
+                        end
                     end
                 end
             end

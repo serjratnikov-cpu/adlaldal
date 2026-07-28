@@ -133,34 +133,20 @@ local function AutoWin()
                     if targetRoot and targetHum and targetHum.Health > 0 and targetHead then
                         local startCF = myRoot.CFrame
                         local cam = workspace.CurrentCamera
-
                         while S.AutoWin and targetHum and targetHum.Parent and targetHum.Health > 0 and targetRoot.Parent do
                             local c = LP.Character
                             local r = c and c:FindFirstChild("HumanoidRootPart")
                             if not r then break end
-
                             local headPos = targetHead.Position
                             local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 3.5) + Vector3.new(0, 1.2, 0)
                             r.CFrame = CFrame.new(behindPos, headPos)
                             r.AssemblyLinearVelocity = Vector3.new(0,0,0)
                             r.AssemblyAngularVelocity = Vector3.new(0,0,0)
-
-                            -- Мгновенно наводим мышь на голову (БЕЗ ПЛАВНОСТИ)
-                            if mousemoverel then
-                                local screenPos, onScreen = cam:WorldToViewportPoint(headPos)
-                                if onScreen then
-                                    local mousePos = UIS:GetMouseLocation()
-                                    local dx = screenPos.X - mousePos.X
-                                    local dy = screenPos.Y - mousePos.Y
-                                    mousemoverel(dx, dy)
-                                end
-                            end
-
-                            -- Выстрел
+                            local camPos = cam.CFrame.Position
+                            cam.CFrame = CFrame.lookAt(camPos, headPos)
                             pcall(function() if mouse1click then mouse1click() end end)
                             task.wait(0.08)
                         end
-
                         local c = LP.Character
                         local r = c and c:FindFirstChild("HumanoidRootPart")
                         if r then r.CFrame = startCF end

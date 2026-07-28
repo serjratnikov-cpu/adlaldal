@@ -97,7 +97,7 @@ local function teleportBehind(targetName)
     local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 4)
     myRoot.CFrame = CFramenew(behindPos, targetRoot.Position)
 end
-    
+
 local function tpBloxyCola()
     local c = LP.Character
     if not c then return end
@@ -221,7 +221,6 @@ task.spawn(function()
             local killersF = wp and wp:FindFirstChild("Killers")
             local survF = wp and wp:FindFirstChild("Survivors")
 
-            -- === Обработка Killers ===
             if killersF then
                 for _, child in pairs(killersF:GetChildren()) do
                     pcall(function()
@@ -238,7 +237,6 @@ task.spawn(function()
                 end
             end
 
-            -- === Обработка Survivors ===
             if survF then
                 for _, child in pairs(survF:GetChildren()) do
                     pcall(function()
@@ -255,7 +253,6 @@ task.spawn(function()
                 end
             end
 
-            -- === Обработка генераторов ===
             for _, o in pairs(genCache) do
                 if o and o.Parent then
                     if S.GenESP then

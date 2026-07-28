@@ -111,16 +111,28 @@ local function AutoWin()
             if not myRoot then
                 task.wait(0.5)
             else
-                local targets = getTargets()
                 local best, bd = nil, math.huge
-                for i = 1, #targets do
-                    local char = targets[i]
-                    local ok = isValid(char)
-                    if ok then
-                        local r = char:FindFirstChild("HumanoidRootPart")
-                        if r then
-                            local d = (r.Position - myRoot.Position).Magnitude
-                            if d < bd then bd = d best = char end
+                for _, p in pairs(Players:GetPlayers()) do
+                    if p ~= LP then
+                        local char = p.Character
+                        if char then
+                            local hum = char:FindFirstChildOfClass("Humanoid")
+                            local root = char:FindFirstChild("HumanoidRootPart")
+                            if hum and hum.Health > 0 and root then
+                                local skip = false
+                                if S.TeamCheck then
+                                    for _, child in pairs(char:GetDescendants()) do
+                                        if child:IsA("BillboardGui") then
+                                            skip = true
+                                            break
+                                        end
+                                    end
+                                end
+                                if not skip then
+                                    local d = (root.Position - myRoot.Position).Magnitude
+                                    if d < bd then bd = d best = char end
+                                end
+                            end
                         end
                     end
                 end
@@ -135,10 +147,6 @@ local function AutoWin()
                         local cam = workspace.CurrentCamera
                         while S.AutoWin do
                             if not best or not best.Parent then break end
-                            if S.TeamCheck then
-                                local plr = Players:GetPlayerFromCharacter(best)
-                                if plr and not canDamage(plr) then break end
-                            end
                             targetRoot = best:FindFirstChild("HumanoidRootPart")
                             targetHum = best:FindFirstChildOfClass("Humanoid")
                             targetHead = best:FindFirstChild("Head")

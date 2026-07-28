@@ -2,6 +2,7 @@ return function(S, getTargets, isValid, Players, LP, mathhuge, mathfloor, Vector
 
 local VirtualInputManager = game:GetService("VirtualInputManager")
 
+-- ===== ESP HELPERS =====
 local function aHL(p,n,fc,oc)
     if p:FindFirstChild(n) then return end
     local h=Instance.new("Highlight") h.Name=n h.FillColor=fc h.FillTransparency=0.4
@@ -39,6 +40,233 @@ local function rmAllGenESP(obj)
     end)
 end
 
+-- ===== ITEM ESP =====
+local ITEM_KEYWORDS = {"bloxy", "cola", "bloxiade", "soda", "medkit", "med_kit", "firstaid", "first_aid", "bandage", "healthkit", "health_kit", "medical", "battery", "key"}
+
+local ITEM_COLORS = {
+    medkit = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "Medkit"},
+    med_kit = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "Medkit"},
+    firstaid = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "First Aid"},
+    first_aid = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "First Aid"},
+    bandage = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "Bandage"},
+    healthkit = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "Health Kit"},
+    health_kit = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "Health Kit"},
+    medical = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "Medical"},
+    bloxy = {fill = Color3RGB(0, 170, 255), outline = Color3RGB(0, 130, 220), label = "Bloxy Cola"},
+    cola = {fill = Color3RGB(0, 170, 255), outline = Color3RGB(0, 130, 220), label = "Cola"},
+    bloxiade = {fill = Color3RGB(0, 170, 255), outline = Color3RGB(0, 130, 220), label = "Bloxiade"},
+    soda = {fill = Color3RGB(0, 170, 255), outline = Color3RGB(0, 130, 220), label = "Soda"},
+    battery = {fill = Color3RGB(255, 255, 0), outline = Color3RGB(200, 200, 0), label = "Battery"},
+    key = {fill = Color3RGB(255, 200, 0), outline = Color3RGB(220, 170, 0), label = "Key"},
+}
+
+local itemESPCache = {} -- [obj] = {highlight, billboard}
+
+local function getItemColorInfo(name)
+    local nl = name:lower()
+    for kw, info in pairs(ITEM_COLORS) do
+        if nl:find(kw) then
+            return info
+        end
+    end
+    return {fill = Color3RGB(255, 255, 255), outline = Color3RGB(200, 200, 200), label = name}
+end
+
+local function isItemAvailable(obj)
+    if not obj or not obj.Parent then return false end
+    if obj:IsDescendantOf(Players) then return false end
+    local ancestor = obj.Parent
+    while ancestor and ancestor ~= workspace do
+        if ancestor:IsA("Player") or ancestor:FindFirstChildOfClass("Humanoid") then return false end
+        if ancestor.Name == "Backpack" then return false end
+        ancestor = ancestor.Parent
+    end
+    return true
+end
+
+local function isMatchingItem(obj)
+    if not obj then return false end
+    local nl = obj.Name:lower()
+    for _, kw in pairs(ITEM_KEYWORDS) do
+        if nl:find(kw) then
+            return true
+        end
+    end
+    if obj:IsA("Tool") then
+        local handleCheck = obj:FindFirstChild("Handle")
+        if handleCheck then
+            local hnl = obj.Name:lower()
+            for _, kw in pairs(ITEM_KEYWORDS) do
+                if hnl:find(kw) then return true end
+            end
+        end
+    end
+    return false
+end
+
+local function findItemPart(obj)
+    if not obj then return nil end
+    
+    if obj:IsA("BasePart") then
+        if obj.Transparency < 1 and obj.Size.Magnitude > 0.1 then
+            return obj
+        end
+        return nil
+    end
+    
+    if obj:IsA("Model") then
+        -- Приоритет: PrimaryPart > Handle > Main > первый видимый BasePart
+        if obj.PrimaryPart and obj.PrimaryPart.Transparency < 1 then
+            return obj.PrimaryPart
+        end
+        local handle = obj:FindFirstChild("Handle")
+        if handle and handle:IsA("BasePart") and handle.Transparency < 1 then
+            return handle
+        end
+        local main = obj:FindFirstChild("Main")
+        if main and main:IsA("BasePart") and main.Transparency < 1 then
+            return main
+        end
+        for _, child in pairs(obj:GetDescendants()) do
+            if child:IsA("BasePart") and child.Transparency < 1 and child.Size.Magnitude > 0.1 then
+                return child
+            end
+        end
+        return nil
+    end
+    
+    if obj:IsA("Tool") then
+        local handle = obj:FindFirstChild("Handle")
+        if handle and handle:IsA("BasePart") and handle.Transparency < 1 then
+            return handle
+        end
+        for _, child in pairs(obj:GetDescendants()) do
+            if child:IsA("BasePart") and child.Transparency < 1 and child.Size.Magnitude > 0.1 then
+                return child
+            end
+        end
+        return nil
+    end
+    
+    return nil
+end
+
+local function addItemESP(obj)
+    if itemESPCache[obj] then return end
+    
+    local part = findItemPart(obj)
+    if not part then return end
+    
+    local colorInfo = getItemColorInfo(obj.Name)
+    
+    local adornTarget = obj
+    if obj:IsA("BasePart") then
+        adornTarget = obj
+    end
+    
+    local hl = Instance.new("Highlight")
+    hl.Name = "_IH"
+    hl.FillColor = colorInfo.fill
+    hl.FillTransparency = 0.5
+    hl.OutlineColor = colorInfo.outline
+    hl.OutlineTransparency = 0
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Parent = adornTarget
+    
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "_IB"
+    bb.Adornee = part
+    bb.Size = UDim2.fromOffset(180, 35)
+    bb.StudsOffset = Vector3new(0, 2.5, 0)
+    bb.AlwaysOnTop = true
+    bb.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    bb.Parent = adornTarget
+    
+    local tl = Instance.new("TextLabel")
+    tl.Parent = bb
+    tl.BackgroundTransparency = 1
+    tl.Size = UDim2.new(1, 0, 1, 0)
+    tl.Font = Enum.Font.GothamBold
+    tl.TextColor3 = colorInfo.outline
+    tl.TextSize = 13
+    tl.TextScaled = true
+    tl.TextStrokeTransparency = 0.4
+    tl.TextStrokeColor3 = Color3RGB(0, 0, 0)
+    tl.ZIndex = 10
+    
+    itemESPCache[obj] = {highlight = hl, billboard = bb, textLabel = tl, part = part}
+end
+
+local function removeItemESP(obj)
+    local data = itemESPCache[obj]
+    if data then
+        pcall(function() if data.highlight then data.highlight:Destroy() end end)
+        pcall(function() if data.billboard then data.billboard:Destroy() end end)
+        itemESPCache[obj] = nil
+    end
+end
+
+local function clearAllItemESP()
+    for obj, data in pairs(itemESPCache) do
+        pcall(function() if data.highlight then data.highlight:Destroy() end end)
+        pcall(function() if data.billboard then data.billboard:Destroy() end end)
+    end
+    itemESPCache = {}
+end
+
+local function updateItemESP()
+    if not S.ItemESP then
+        clearAllItemESP()
+        return
+    end
+    
+    local myChar = LP.Character
+    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    
+    -- Найти все предметы
+    local foundItems = {}
+    for _, obj in pairs(workspace:GetDescendants()) do
+        pcall(function()
+            if isItemAvailable(obj) and isMatchingItem(obj) then
+                -- Проверяем что у объекта есть видимая часть
+                local part = findItemPart(obj)
+                if part then
+                    foundItems[obj] = true
+                end
+            end
+        end)
+    end
+    
+    -- Удалить ESP для исчезнувших предметов
+    for obj, _ in pairs(itemESPCache) do
+        if not foundItems[obj] or not obj.Parent or not isItemAvailable(obj) then
+            removeItemESP(obj)
+        end
+    end
+    
+    -- Добавить ESP для новых предметов и обновить дистанцию
+    for obj, _ in pairs(foundItems) do
+        if not itemESPCache[obj] then
+            addItemESP(obj)
+        end
+        
+        -- Обновить текст с дистанцией
+        local data = itemESPCache[obj]
+        if data and data.textLabel and myHRP then
+            local part = data.part
+            if part and part.Parent then
+                local dist = mathfloor((myHRP.Position - part.Position).Magnitude)
+                local colorInfo = getItemColorInfo(obj.Name)
+                data.textLabel.Text = colorInfo.label .. " [" .. dist .. "m]"
+            end
+        elseif data and data.textLabel then
+            local colorInfo = getItemColorInfo(obj.Name)
+            data.textLabel.Text = colorInfo.label
+        end
+    end
+end
+
+-- ===== HITBOX =====
 local hitboxOriginals = {}
 
 local function updateHitboxes()
@@ -89,6 +317,7 @@ local function updateHitboxes()
     end
 end
 
+-- ===== TELEPORT BEHIND =====
 local function teleportBehind(targetName)
     local myChar = LP.Character
     if not myChar then return end
@@ -112,80 +341,43 @@ local function teleportBehind(targetName)
     myRoot.CFrame = CFramenew(behindPos, targetRoot.Position)
 end
 
-local function findItemPart(obj)
-    if obj:IsA("BasePart") then return obj end
-    if obj:IsA("Model") then
-        return obj.PrimaryPart or obj:FindFirstChild("Handle") or obj:FindFirstChild("Main") or obj:FindFirstChildWhichIsA("BasePart", true)
-    end
-    if obj:IsA("Tool") then
-        return obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart", true)
-    end
-    return nil
-end
-
-local function isItemAvailable(obj)
-    if not obj or not obj.Parent then return false end
-    if obj:IsDescendantOf(Players) then return false end
-    local ancestor = obj.Parent
-    while ancestor and ancestor ~= workspace do
-        if ancestor:IsA("Player") or ancestor:FindFirstChildOfClass("Humanoid") then return false end
-        if ancestor.Name == "Backpack" then return false end
-        ancestor = ancestor.Parent
-    end
-    return true
-end
-
+-- ===== ITEM COLLECTION (исправлено — без лагов) =====
 local function pressF()
     pcall(function()
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-        task.wait(0.08)
+        task.wait(0.05)
         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
     end)
 end
 
 local function fireAllProximity(obj)
     pcall(function()
-        for _, d in pairs(obj:GetDescendants()) do
+        local function tryFire(d)
             if d:IsA("ProximityPrompt") then
                 pcall(function()
-                    if fireproximityprompt then
-                        fireproximityprompt(d)
-                    end
+                    if fireproximityprompt then fireproximityprompt(d) end
                 end)
             end
         end
-        if obj:IsA("ProximityPrompt") then
-            pcall(function()
-                if fireproximityprompt then fireproximityprompt(obj) end
-            end)
-        end
-        local parent = obj.Parent
-        if parent then
-            for _, d in pairs(parent:GetDescendants()) do
-                if d:IsA("ProximityPrompt") then
-                    pcall(function()
-                        if fireproximityprompt then fireproximityprompt(d) end
-                    end)
-                end
-            end
+        for _, d in pairs(obj:GetDescendants()) do tryFire(d) end
+        tryFire(obj)
+        if obj.Parent then
+            for _, d in pairs(obj.Parent:GetDescendants()) do tryFire(d) end
         end
     end)
 end
 
 local function fireAllClicks(obj)
     pcall(function()
-        for _, d in pairs(obj:GetDescendants()) do
+        local function tryFire(d)
             if d:IsA("ClickDetector") then
                 pcall(function()
                     if fireclickdetector then fireclickdetector(d) end
                 end)
             end
         end
-        if obj:IsA("ClickDetector") then
-            pcall(function()
-                if fireclickdetector then fireclickdetector(obj) end
-            end)
-        end
+        for _, d in pairs(obj:GetDescendants()) do tryFire(d) end
+        if obj:IsA("ClickDetector") then tryFire(obj) end
     end)
 end
 
@@ -197,52 +389,43 @@ local function collectItem(obj, savedCFrame)
     local part = findItemPart(obj)
     if not part then return false end
     
-    for attempt = 1, 4 do
-        if not obj or not obj.Parent then break end
-        if not isItemAvailable(obj) then break end
+    -- Быстрый сбор — максимум 2 попытки, минимум задержек
+    for attempt = 1, 2 do
+        if not obj or not obj.Parent then return true end
+        if not isItemAvailable(obj) then return true end
         part = findItemPart(obj)
-        if not part then break end
+        if not part then return false end
         
-        hrp.CFrame = CFramenew(part.Position + Vector3new(0, 2, 0))
-        task.wait(0.2)
-        
-        fireAllProximity(obj)
-        task.wait(0.15)
-        pressF()
-        task.wait(0.15)
-        pressF()
-        task.wait(0.15)
-        
-        fireAllClicks(obj)
+        -- Телепорт к предмету
+        hrp.CFrame = CFramenew(part.Position + Vector3new(0, 1, 0))
         task.wait(0.1)
         
+        -- Пробуем все способы подобрать
+        fireAllProximity(obj)
+        pressF()
+        fireAllClicks(obj)
+        
+        -- Пробуем напрямую переместить Tool
         if obj:IsA("Tool") then
             pcall(function() obj.Parent = c end)
-            task.wait(0.15)
             if obj.Parent == c then return true end
             pcall(function() obj.Parent = LP.Backpack end)
-            task.wait(0.15)
             if obj.Parent == LP.Backpack then return true end
         end
         
-        if part and obj.Parent then
-            hrp.CFrame = CFramenew(part.Position)
-            task.wait(0.15)
-            pressF()
-            task.wait(0.2)
-        end
+        task.wait(0.1)
         
+        -- Проверяем, подобрали ли
+        if not obj.Parent then return true end
         for _, tool in pairs(LP.Backpack:GetChildren()) do
             if tool == obj then return true end
         end
         for _, tool in pairs(c:GetChildren()) do
             if tool == obj then return true end
         end
-        
-        if not obj.Parent then return true end
     end
     
-    return obj and (obj.Parent == c or obj.Parent == LP.Backpack) or (obj and not obj.Parent)
+    return false
 end
 
 local function findItemsByKeywords(keywords)
@@ -250,6 +433,8 @@ local function findItemsByKeywords(keywords)
     for _, o in pairs(workspace:GetDescendants()) do
         pcall(function()
             if isItemAvailable(o) then
+                local part = findItemPart(o)
+                if not part then return end -- ПРОПУСКАЕМ если нет видимой части!
                 local nl = o.Name:lower()
                 for _, kw in pairs(keywords) do
                     if nl:find(kw) then
@@ -272,9 +457,7 @@ local function tpBloxyCola()
     task.spawn(function()
         local keywords = {"bloxy", "cola", "bloxiade", "soda"}
         local items = findItemsByKeywords(keywords)
-        if #items == 0 then
-            return
-        end
+        if #items == 0 then return end
         table.sort(items, function(a, b)
             local pa = findItemPart(a)
             local pb = findItemPart(b)
@@ -287,7 +470,7 @@ local function tpBloxyCola()
                 break
             end
         end
-        task.wait(0.15)
+        task.wait(0.1)
         if c and c.Parent then
             local h2 = c:FindFirstChild("HumanoidRootPart")
             if h2 then h2.CFrame = sv end
@@ -302,11 +485,9 @@ local function tpMedkit()
     if not hrp then return end
     local sv = hrp.CFrame
     task.spawn(function()
-        local keywords = {"medkit", "med_kit", "med kit", "firstaid", "first_aid", "first aid", "bandage", "healthkit", "health_kit", "medical"}
+        local keywords = {"medkit", "med_kit", "firstaid", "first_aid", "bandage", "healthkit", "health_kit", "medical"}
         local items = findItemsByKeywords(keywords)
-        if #items == 0 then
-            return
-        end
+        if #items == 0 then return end
         table.sort(items, function(a, b)
             local pa = findItemPart(a)
             local pb = findItemPart(b)
@@ -319,7 +500,7 @@ local function tpMedkit()
                 break
             end
         end
-        task.wait(0.15)
+        task.wait(0.1)
         if c and c.Parent then
             local h2 = c:FindFirstChild("HumanoidRootPart")
             if h2 then h2.CFrame = sv end
@@ -335,14 +516,14 @@ local function tpNearestItem()
     local sv = hrp.CFrame
     task.spawn(function()
         local best, bd = nil, mathhuge
-        local itemKeywords = {"bloxy", "cola", "bloxiade", "soda", "medkit", "med_kit", "med kit", "firstaid", "first_aid", "first aid", "bandage", "healthkit", "health_kit", "medical", "battery", "key", "pickup"}
+        local allKeywords = {"bloxy", "cola", "bloxiade", "soda", "medkit", "med_kit", "firstaid", "first_aid", "bandage", "healthkit", "health_kit", "medical", "battery", "key", "pickup"}
         for _, o in pairs(workspace:GetDescendants()) do
             pcall(function()
                 if isItemAvailable(o) then
                     local isItem = false
                     if o:IsA("Tool") then isItem = true end
                     local nl = o.Name:lower()
-                    for _, kw in pairs(itemKeywords) do
+                    for _, kw in pairs(allKeywords) do
                         if nl:find(kw) then isItem = true break end
                     end
                     if isItem then
@@ -358,7 +539,7 @@ local function tpNearestItem()
         if best then
             collectItem(best, sv)
         end
-        task.wait(0.15)
+        task.wait(0.1)
         if c and c.Parent then
             local h2 = c:FindFirstChild("HumanoidRootPart")
             if h2 then h2.CFrame = sv end
@@ -366,6 +547,7 @@ local function tpNearestItem()
     end)
 end
 
+-- ===== GENERATOR ESP =====
 local genCache = {}
 local allGenObjects = {}
 
@@ -428,6 +610,7 @@ task.spawn(function()
     end
 end)
 
+-- ===== MAIN ESP LOOP =====
 task.spawn(function()
     while task.wait(0.5) do
         pcall(function()
@@ -469,6 +652,7 @@ task.spawn(function()
                 end
             end
 
+            -- Generator ESP
             if not S.GenESP then
                 for obj, _ in pairs(allGenObjects) do
                     if obj and obj.Parent then
@@ -497,10 +681,14 @@ task.spawn(function()
                     end
                 end
             end
+            
+            -- Item ESP
+            updateItemESP()
         end)
     end
 end)
 
+-- ===== UTILITY =====
 local function getPlayerListForDropdown()
     local list = {}
     for _, p in pairs(Players:GetPlayers()) do
@@ -532,6 +720,6 @@ return {
     tpNearestItem = tpNearestItem,
     getPlayerListForDropdown = getPlayerListForDropdown,
     clearHitboxes = clearHitboxes,
+    clearAllItemESP = clearAllItemESP,
 }
-
 end

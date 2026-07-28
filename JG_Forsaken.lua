@@ -130,7 +130,7 @@ local function AutoWin()
                     local targetHum = best:FindFirstChildOfClass("Humanoid")
                     if targetRoot and targetHum and targetHum.Health > 0 then
                         local startCF = myRoot.CFrame
-                        local Camera = workspace.CurrentCamera
+                        local cam = workspace.CurrentCamera
                         while S.AutoWin and targetHum and targetHum.Parent and targetHum.Health > 0 and targetRoot.Parent do
                             local c = LP.Character
                             local r = c and c:FindFirstChild("HumanoidRootPart")
@@ -138,9 +138,19 @@ local function AutoWin()
                             local head = best:FindFirstChild("Head") or targetRoot
                             local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 3.5) + Vector3new(0, 1.2, 0)
                             r.CFrame = CFramenew(behindPos, head.Position)
-                            Camera.CFrame = CFramenew(r.Position + Vector3new(0, 1.5, 0), head.Position)
+                            cam.CFrame = CFramenew(r.Position + Vector3new(0, 1.5, 0), head.Position)
+                            local sp = cam:WorldToScreenPoint(head.Position)
+                            if sp.Z > 0 then
+                                local vp = cam.ViewportSize
+                                local dx = sp.X - vp.X * 0.5
+                                local dy = sp.Y - vp.Y * 0.5
+                                if mousemoverel then
+                                    mousemoverel(dx, dy)
+                                end
+                            end
+                            task.wait(0.05)
                             pcall(function() if mouse1click then mouse1click() end end)
-                            task.wait(0.12)
+                            task.wait(0.07)
                         end
                         task.wait(0.1)
                         local c = LP.Character
@@ -155,7 +165,7 @@ local function AutoWin()
         autoWinRunning = false
     end)
 end
-
+    
 local function tpBloxyCola()
     local c = LP.Character
     if not c then return end

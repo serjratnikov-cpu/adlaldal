@@ -110,94 +110,213 @@ local function teleportBehind(targetName)
     myRoot.CFrame = CFramenew(behindPos, targetRoot.Position)
 end
 
+local function findItemPart(obj)
+    if obj:IsA("BasePart") then return obj end
+    if obj:IsA("Model") then
+        return obj.PrimaryPart or obj:FindFirstChild("Handle") or obj:FindFirstChild("Main") or obj:FindFirstChildWhichIsA("BasePart", true)
+    end
+    if obj:IsA("Tool") then
+        return obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart", true)
+    end
+    return nil
+end
+
+local function isItemAvailable(obj)
+    if not obj or not obj.Parent then return false end
+    if obj:IsDescendantOf(Players) then return false end
+    local ancestor = obj.Parent
+    while ancestor and ancestor ~= workspace do
+        if ancestor:IsA("Player") or ancestor:FindFirstChildOfClass("Humanoid") then return false end
+        if ancestor.Name == "Backpack" then return false end
+        ancestor = ancestor.Parent
+    end
+    return true
+end
+
+local function collectItem(obj, savedCFrame)
+    local c = LP.Character
+    if not c then return false end
+    local hrp = c:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    local part = findItemPart(obj)
+    if not part then return false end
+    local origCFrame = hrp.CFrame
+    if savedCFrame then origCFrame = savedCFrame end
+    
+    for attempt = 1, 3 do
+        if not obj.Parent or not isItemAvailable(obj) then break end
+        part = findItemPart(obj)
+        if not part then break end
+        
+        local tpCFrame = CFramenew(part.Position + Vector3new(0, 2, 0))
+        hrp.CFrame = tpCFrame
+        task.wait(0.15)
+        
+        local prox = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+        if prox then
+            pcall(function()
+                fireproximityprompt(prox)
+            end)
+            task.wait(0.4)
+        end
+        
+        local ce = obj:FindFirstChildWhichIsA("ClickDetector", true)
+        if ce then
+            pcall(function()
+                fireclickdetector(ce)
+            end)
+            task.wait(0.3)
+        end
+        
+        if obj:IsA("Tool") then
+            pcall(function() obj.Parent = c end)
+            task.wait(0.2)
+            if obj.Parent == c or obj.Parent == LP.Backpack then break end
+            pcall(function() obj.Parent = LP.Backpack end)
+            task.wait(0.2)
+            if obj.Parent == LP.Backpack then break end
+        end
+        
+        if part then
+            hrp.CFrame = CFramenew(part.Position)
+            task.wait(0.1)
+            local hum = c:FindFirstChildOfClass("Humanoid")
+            if hum then
+                for _, tool in pairs(LP.Backpack:GetChildren()) do
+                    if tool == obj then return true end
+                end
+            end
+        end
+        
+        task.wait(0.15)
+    end
+    
+    return obj and (obj.Parent == c or obj.Parent == LP.Backpack)
+end
+
+local function findItemsByKeywords(keywords)
+    local found = {}
+    for _, o in pairs(workspace:GetDescendants()) do
+        pcall(function()
+            if isItemAvailable(o) then
+                local nl = o.Name:lower()
+                for _, kw in pairs(keywords) do
+                    if nl:find(kw) then
+                        table_insert(found, o)
+                        break
+                    end
+                end
+            end
+        end)
+    end
+    return found
+end
+
 local function tpBloxyCola()
     local c = LP.Character
     if not c then return end
-    local h = c:FindFirstChild("HumanoidRootPart")
-    if not h then return end
-    local sv = h.CFrame
+    local hrp = c:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local sv = hrp.CFrame
     task.spawn(function()
-        for _, o in pairs(workspace:GetDescendants()) do
-            pcall(function()
-                if o:IsA("Tool") and o.Parent ~= c and o.Parent ~= LP.Backpack then
-                    local nl = o.Name:lower()
-                    if nl:find("bloxy") or nl:find("cola") or nl:find("bloxiade") then
-                        local ha = o:FindFirstChild("Handle")
-                        if ha then
-                            h.CFrame = ha.CFrame
-                            task.wait(0.3)
-                            o.Parent = LP.Backpack
-                            task.wait(0.1)
-                        end
-                    end
-                end
-            end)
+        local keywords = {"bloxy", "cola", "bloxiade", "soda"}
+        local items = findItemsByKeywords(keywords)
+        if #items == 0 then
+            hrp.CFrame = sv
+            return
+        end
+        table.sort(items, function(a, b)
+            local pa = findItemPart(a)
+            local pb = findItemPart(b)
+            if not pa or not pb then return false end
+            return (pa.Position - hrp.Position).Magnitude < (pb.Position - hrp.Position).Magnitude
+        end)
+        for _, item in pairs(items) do
+            if item and item.Parent and isItemAvailable(item) then
+                collectItem(item, sv)
+                task.wait(0.1)
+                break
+            end
         end
         task.wait(0.2)
-        h.CFrame = sv
+        if c and c.Parent then
+            local h2 = c:FindFirstChild("HumanoidRootPart")
+            if h2 then h2.CFrame = sv end
+        end
     end)
 end
 
 local function tpMedkit()
     local c = LP.Character
     if not c then return end
-    local h = c:FindFirstChild("HumanoidRootPart")
-    if not h then return end
-    local sv = h.CFrame
-    local kw = {"medkit", "med_kit", "firstaid", "first_aid", "bandage", "healthkit", "health_kit"}
+    local hrp = c:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local sv = hrp.CFrame
     task.spawn(function()
-        for _, o in pairs(workspace:GetDescendants()) do
-            pcall(function()
-                if o:IsA("Tool") and o.Parent ~= c and o.Parent ~= LP.Backpack then
-                    local nl = o.Name:lower()
-                    for _, k in pairs(kw) do
-                        if nl:find(k) then
-                            local ha = o:FindFirstChild("Handle")
-                            if ha then
-                                h.CFrame = ha.CFrame
-                                task.wait(0.3)
-                                o.Parent = LP.Backpack
-                                task.wait(0.1)
-                            end
-                            break
-                        end
-                    end
-                end
-            end)
+        local keywords = {"medkit", "med_kit", "med kit", "firstaid", "first_aid", "first aid", "bandage", "healthkit", "health_kit", "medical"}
+        local items = findItemsByKeywords(keywords)
+        if #items == 0 then
+            hrp.CFrame = sv
+            return
+        end
+        table.sort(items, function(a, b)
+            local pa = findItemPart(a)
+            local pb = findItemPart(b)
+            if not pa or not pb then return false end
+            return (pa.Position - hrp.Position).Magnitude < (pb.Position - hrp.Position).Magnitude
+        end)
+        for _, item in pairs(items) do
+            if item and item.Parent and isItemAvailable(item) then
+                collectItem(item, sv)
+                task.wait(0.1)
+                break
+            end
         end
         task.wait(0.2)
-        h.CFrame = sv
+        if c and c.Parent then
+            local h2 = c:FindFirstChild("HumanoidRootPart")
+            if h2 then h2.CFrame = sv end
+        end
     end)
 end
 
 local function tpNearestItem()
     local c = LP.Character
     if not c then return end
-    local h = c:FindFirstChild("HumanoidRootPart")
-    if not h then return end
-    local sv = h.CFrame
-    local best, bd = nil, mathhuge
-    for _, o in pairs(workspace:GetDescendants()) do
-        pcall(function()
-            if o:IsA("Tool") and o.Parent ~= c and o.Parent ~= LP.Backpack then
-                local ha = o:FindFirstChild("Handle")
-                if ha then
-                    local d = (ha.Position - h.Position).Magnitude
-                    if d < bd then bd = d best = o end
+    local hrp = c:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local sv = hrp.CFrame
+    task.spawn(function()
+        local best, bd = nil, mathhuge
+        local itemKeywords = {"bloxy", "cola", "bloxiade", "soda", "medkit", "med_kit", "med kit", "firstaid", "first_aid", "first aid", "bandage", "healthkit", "health_kit", "medical", "battery", "key", "item", "pickup"}
+        for _, o in pairs(workspace:GetDescendants()) do
+            pcall(function()
+                if isItemAvailable(o) then
+                    local isItem = false
+                    if o:IsA("Tool") then isItem = true end
+                    local nl = o.Name:lower()
+                    for _, kw in pairs(itemKeywords) do
+                        if nl:find(kw) then isItem = true break end
+                    end
+                    if isItem then
+                        local part = findItemPart(o)
+                        if part then
+                            local d = (part.Position - hrp.Position).Magnitude
+                            if d < bd then bd = d best = o end
+                        end
+                    end
                 end
-            end
-        end)
-    end
-    if best then
-        local ha = best:FindFirstChild("Handle")
-        if ha then
-            h.CFrame = ha.CFrame
-            task.wait(0.35)
-            pcall(function() best.Parent = LP.Backpack end)
-            task.wait(0.2)
-            h.CFrame = sv
+            end)
         end
-    end
+        if best then
+            collectItem(best, sv)
+            task.wait(0.2)
+        end
+        if c and c.Parent then
+            local h2 = c:FindFirstChild("HumanoidRootPart")
+            if h2 then h2.CFrame = sv end
+        end
+    end)
 end
 
 local genCache = {}

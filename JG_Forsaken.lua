@@ -1,4 +1,3 @@
-
 return function(S, getTargets, isValid, Players, LP, mathhuge, mathfloor, Vector3new, CFramenew, Color3RGB, task, pcall, workspace, table_insert)
 
 local function aHL(p,n,fc,oc)
@@ -219,8 +218,27 @@ task.spawn(function()
             local mc = LP.Character
             local mh = mc and mc:FindFirstChild("HumanoidRootPart")
             local wp = workspace:FindFirstChild("Players")
+            local killersF = wp and wp:FindFirstChild("Killers")
             local survF = wp and wp:FindFirstChild("Survivors")
 
+            -- === Обработка Killers ===
+            if killersF then
+                for _, child in pairs(killersF:GetChildren()) do
+                    pcall(function()
+                        if not child:FindFirstChild("HumanoidRootPart") then return end
+                        local dist = mh and mathfloor((mh.Position - child.HumanoidRootPart.Position).Magnitude) or 0
+                        local hd = child:FindFirstChild("Head") or child.HumanoidRootPart
+                        if S.KillerESP then
+                            aHL(child, "_KH", Color3RGB(255, 0, 0), Color3RGB(255, 0, 0))
+                            aBB(child, "_KB", "[Killer] " .. child.Name .. " [" .. dist .. "m]", Color3RGB(255, 40, 40), hd)
+                        else
+                            rm(child, "_KH", "_KB")
+                        end
+                    end)
+                end
+            end
+
+            -- === Обработка Survivors ===
             if survF then
                 for _, child in pairs(survF:GetChildren()) do
                     pcall(function()
@@ -228,24 +246,29 @@ task.spawn(function()
                         local dist = mh and mathfloor((mh.Position - child.HumanoidRootPart.Position).Magnitude) or 0
                         local hd = child:FindFirstChild("Head") or child.HumanoidRootPart
                         if S.SurvESP then
-                            aHL(child,"_SH",Color3RGB(0,200,60),Color3RGB(90,255,130))
-                            aBB(child,"_SB","[Surv] "..child.Name.." ["..dist.."m]",Color3RGB(90,255,120),hd)
-                        else rm(child,"_SH","_SB") end
+                            aHL(child, "_SH", Color3RGB(0,200,60), Color3RGB(90,255,130))
+                            aBB(child, "_SB", "[Surv] "..child.Name.." ["..dist.."m]", Color3RGB(90,255,120), hd)
+                        else
+                            rm(child, "_SH", "_SB")
+                        end
                     end)
                 end
             end
 
+            -- === Обработка генераторов ===
             for _, o in pairs(genCache) do
                 if o and o.Parent then
                     if S.GenESP then
                         local pos = o:IsA("Model") and (o.PrimaryPart or o:FindFirstChildWhichIsA("BasePart")) and (o.PrimaryPart or o:FindFirstChildWhichIsA("BasePart")).Position or (o:IsA("BasePart") and o.Position)
                         if pos then
                             local dist = mh and mathfloor((mh.Position - pos).Magnitude) or 0
-                            aHL(o,"_GH",Color3RGB(255,200,0),Color3RGB(255,160,0))
+                            aHL(o, "_GH", Color3RGB(255,200,0), Color3RGB(255,160,0))
                             local ad = o:IsA("Model") and (o.PrimaryPart or o:FindFirstChildWhichIsA("BasePart")) or o
-                            aBB(o,"_GB","[Gen] "..dist.."m",Color3RGB(255,240,60),ad)
+                            aBB(o, "_GB", "[Gen] "..dist.."m", Color3RGB(255,240,60), ad)
                         end
-                    else rm(o,"_GH","_GB") end
+                    else
+                        rm(o, "_GH", "_GB")
+                    end
                 end
             end
         end)

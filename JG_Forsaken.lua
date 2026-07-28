@@ -133,15 +133,23 @@ local function AutoWin()
                     if targetRoot and targetHum and targetHum.Health > 0 and targetHead then
                         local startCF = myRoot.CFrame
                         local cam = workspace.CurrentCamera
-                        while S.AutoWin and targetHum and targetHum.Parent and targetHum.Health > 0 and targetRoot.Parent do
+                        while S.AutoWin do
+                            if not best or not best.Parent then break end
+                            targetRoot = best:FindFirstChild("HumanoidRootPart")
+                            targetHum = best:FindFirstChildOfClass("Humanoid")
+                            targetHead = best:FindFirstChild("Head")
+                            if not targetRoot or not targetHum or not targetHead or targetHum.Health <= 0 then break end
+
                             local c = LP.Character
                             local r = c and c:FindFirstChild("HumanoidRootPart")
                             if not r then break end
+
                             local headPos = targetHead.Position
-                            local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 3.5) + Vector3.new(0, 1.2, 0)
+                            local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 2) + Vector3.new(0, 0.5, 0)
                             r.CFrame = CFrame.new(behindPos, headPos)
                             r.AssemblyLinearVelocity = Vector3.new(0,0,0)
                             r.AssemblyAngularVelocity = Vector3.new(0,0,0)
+
                             if mousemoverel then
                                 local screenPos = cam:WorldToViewportPoint(headPos)
                                 local mousePos = UIS:GetMouseLocation()

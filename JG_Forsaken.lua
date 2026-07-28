@@ -142,8 +142,13 @@ local function AutoWin()
                             r.CFrame = CFrame.new(behindPos, headPos)
                             r.AssemblyLinearVelocity = Vector3.new(0,0,0)
                             r.AssemblyAngularVelocity = Vector3.new(0,0,0)
-                            local camPos = cam.CFrame.Position
-                            cam.CFrame = CFrame.lookAt(camPos, headPos)
+                            if mousemoverel then
+                                local screenPos = cam:WorldToViewportPoint(headPos)
+                                local mousePos = UIS:GetMouseLocation()
+                                local dx = screenPos.X - mousePos.X
+                                local dy = screenPos.Y - mousePos.Y
+                                mousemoverel(dx, dy)
+                            end
                             pcall(function() if mouse1click then mouse1click() end end)
                             task.wait(0.08)
                         end

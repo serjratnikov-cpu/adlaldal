@@ -104,6 +104,7 @@ local function AutoWin()
     if autoWinRunning then return end
     autoWinRunning = true
     local UIS = game:GetService("UserInputService")
+    local RunService = game:GetService("RunService")
     task.spawn(function()
         while S.AutoWin do
             local myChar = LP.Character
@@ -125,7 +126,7 @@ local function AutoWin()
                     end
                 end
                 if not best then
-                    task.wait(0.5)
+                    task.wait(0.3)
                 else
                     local targetRoot = best:FindFirstChild("HumanoidRootPart")
                     local targetHum = best:FindFirstChildOfClass("Humanoid")
@@ -133,6 +134,24 @@ local function AutoWin()
                     if targetRoot and targetHum and targetHum.Health > 0 and targetHead then
                         local startCF = myRoot.CFrame
                         local cam = workspace.CurrentCamera
+
+                        local aimConn
+                        aimConn = RunService.RenderStepped:Connect(function()
+                            if not S.AutoWin or not targetHead or not targetHead.Parent then
+                                if aimConn then aimConn:Disconnect() aimConn = nil end
+                                return
+                            end
+                            local headPos = targetHead.Position
+                            cam.CFrame = CFramenew(cam.CFrame.Position, headPos)
+                            local screenPos, onScreen = cam:WorldToViewportPoint(headPos)
+                            if onScreen and mousemoverel then
+                                local mousePos = UIS:GetMouseLocation()
+                                local dx = screenPos.X - mousePos.X
+                                local dy = screenPos.Y - mousePos.Y
+                                mousemoverel(dx, dy)
+                            end
+                        end)
+
                         while S.AutoWin and targetHum and targetHum.Parent and targetHum.Health > 0 and targetRoot.Parent do
                             local c = LP.Character
                             local r = c and c:FindFirstChild("HumanoidRootPart")
@@ -140,36 +159,25 @@ local function AutoWin()
 
                             local headPos = targetHead.Position
                             local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 3.5) + Vector3new(0, 1.2, 0)
-
                             r.CFrame = CFramenew(behindPos, headPos)
-                            r.AssemblyLinearVelocity = Vector3new(0, 0, 0)
-                            r.AssemblyAngularVelocity = Vector3new(0, 0, 0)
+                            r.AssemblyLinearVelocity = Vector3new(0,0,0)
+                            r.AssemblyAngularVelocity = Vector3new(0,0,0)
 
-                            task.wait()
+                            cam.CFrame = CFramenew(r.CFrame.Position + Vector3new(0,1.5,0), headPos)
 
-                            cam.CFrame = CFramenew(r.CFrame.Position + Vector3new(0, 1.5, 0), headPos)
+                            task.wait(0.05)
 
-                            task.wait()
-
-                            local screenPos, onScreen = cam:WorldToViewportPoint(headPos)
-                            if onScreen then
-                                local mousePos = UIS:GetMouseLocation()
-                                local dx = screenPos.X - mousePos.X
-                                local dy = screenPos.Y - mousePos.Y
-                                if mousemoverel then
-                                    mousemoverel(dx, dy)
-                                end
-                            end
-
-                            task.wait()
                             pcall(function() if mouse1click then mouse1click() end end)
                             task.wait(0.08)
                         end
+
+                        if aimConn then aimConn:Disconnect() aimConn = nil end
+
                         local c = LP.Character
                         local r = c and c:FindFirstChild("HumanoidRootPart")
                         if r then r.CFrame = startCF end
                     end
-                    task.wait(0.1)
+                    task.wait(0.05)
                 end
             end
             task.wait(0.05)

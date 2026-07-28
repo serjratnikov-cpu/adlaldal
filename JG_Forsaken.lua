@@ -119,19 +119,8 @@ local function AutoWin()
                             local hum = char:FindFirstChildOfClass("Humanoid")
                             local root = char:FindFirstChild("HumanoidRootPart")
                             if hum and hum.Health > 0 and root then
-                                local skip = false
-                                if S.TeamCheck then
-                                    for _, child in pairs(char:GetDescendants()) do
-                                        if child:IsA("BillboardGui") then
-                                            skip = true
-                                            break
-                                        end
-                                    end
-                                end
-                                if not skip then
-                                    local d = (root.Position - myRoot.Position).Magnitude
-                                    if d < bd then bd = d best = char end
-                                end
+                                local d = (root.Position - myRoot.Position).Magnitude
+                                if d < bd then bd = d best = char end
                             end
                         end
                     end

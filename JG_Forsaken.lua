@@ -1,6 +1,5 @@
-return function(S, getTargets, isValid, Players, LP, mathhuge, mathfloor, Vector3new, CFramenew, Color3RGB, task, pcall, workspace, table_insert)
 
-local UIS = game:GetService("UserInputService")
+return function(S, getTargets, isValid, Players, LP, mathhuge, mathfloor, Vector3new, CFramenew, Color3RGB, task, pcall, workspace, table_insert)
 
 local function aHL(p,n,fc,oc)
     if p:FindFirstChild(n) then return end
@@ -115,7 +114,8 @@ local function AutoWin()
                 local best, bd = nil, mathhuge
                 for i = 1, #targets do
                     local char = targets[i]
-                    if isValid(char) then
+                    local ok = isValid(char)
+                    if ok then
                         local r = char:FindFirstChild("HumanoidRootPart")
                         if r then
                             local d = (r.Position - myRoot.Position).Magnitude
@@ -128,23 +128,21 @@ local function AutoWin()
                 else
                     local targetRoot = best:FindFirstChild("HumanoidRootPart")
                     local targetHum = best:FindFirstChildOfClass("Humanoid")
-                    local targetHead = best:FindFirstChild("Head")
-                    if targetRoot and targetHum and targetHum.Health > 0 and targetHead then
+                    if targetRoot and targetHum and targetHum.Health > 0 then
                         local startCF = myRoot.CFrame
                         local cam = workspace.CurrentCamera
                         while S.AutoWin and targetHum and targetHum.Parent and targetHum.Health > 0 and targetRoot.Parent do
                             local c = LP.Character
                             local r = c and c:FindFirstChild("HumanoidRootPart")
                             if not r then break end
-
+                            
+                            local head = best:FindFirstChild("Head") or targetRoot
                             local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 3.5) + Vector3new(0, 1.2, 0)
-                            r.CFrame = CFramenew(behindPos, targetHead.Position)
+                            
+                            r.CFrame = CFramenew(behindPos, head.Position)
+                            cam.CFrame = CFramenew(cam.CFrame.Position, head.Position)
 
-                            task.wait(0.01)
-
-                            cam.CFrame = CFramenew(cam.CFrame.Position, targetHead.Position)
-
-                            local screenPos, onScreen = cam:WorldToViewportPoint(targetHead.Position)
+                            local screenPos, onScreen = cam:WorldToScreenPoint(head.Position)
                             if onScreen then
                                 local mousePos = UIS:GetMouseLocation()
                                 local dx = screenPos.X - mousePos.X
@@ -154,19 +152,15 @@ local function AutoWin()
                                 end
                             end
 
-                            task.wait(0.01)
-
-                            pcall(function()
-                                if mouse1click then mouse1click() end
-                            end)
-
-                            task.wait(0.08)
+                            task.wait(0.02)
+                            pcall(function() if mouse1click then mouse1click() end end)
+                            task.wait(0.1)
                         end
                         local c = LP.Character
                         local r = c and c:FindFirstChild("HumanoidRootPart")
                         if r then r.CFrame = startCF end
                     end
-                    task.wait(0.1)
+                    task.wait(0.25)
                 end
             end
             task.wait(0.05)
@@ -174,7 +168,7 @@ local function AutoWin()
         autoWinRunning = false
     end)
 end
-
+    
 local function tpBloxyCola()
     local c = LP.Character
     if not c then return end

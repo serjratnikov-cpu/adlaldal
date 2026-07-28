@@ -278,7 +278,6 @@ end
 return {
     updateHitboxes = updateHitboxes,
     teleportBehind = teleportBehind,
-    AutoWin = AutoWin,
     tpBloxyCola = tpBloxyCola,
     tpMedkit = tpMedkit,
     tpNearestItem = tpNearestItem,

@@ -40,139 +40,73 @@ local function rmAllGenESP(obj)
     end)
 end
 
--- ===== ITEM ESP =====
-local ITEM_KEYWORDS = {"bloxy", "cola", "bloxiade", "soda", "medkit", "med_kit", "firstaid", "first_aid", "bandage", "healthkit", "health_kit", "medical", "battery", "key"}
+-- ===== ITEM ESP (ПОЛНОСТЬЮ ПЕРЕПИСАНО) =====
+-- В Forsaken в стандартных раундах спавнятся ТОЛЬКО: Medkit и Bloxy Cola (Tool объекты)
+-- Приватный сервер: Flashlight, Epicsauce, Glock, AssaultRifle, Broadsword, GravityGun, GreenKey, FakeBloxyCola, FakeMedkit, Bloxiade, BloxyColaTest
 
-local ITEM_COLORS = {
-    medkit = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "Medkit"},
-    med_kit = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "Medkit"},
-    firstaid = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "First Aid"},
-    first_aid = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "First Aid"},
-    bandage = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "Bandage"},
-    healthkit = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "Health Kit"},
-    health_kit = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "Health Kit"},
-    medical = {fill = Color3RGB(0, 255, 100), outline = Color3RGB(0, 200, 80), label = "Medical"},
-    bloxy = {fill = Color3RGB(0, 170, 255), outline = Color3RGB(0, 130, 220), label = "Bloxy Cola"},
-    cola = {fill = Color3RGB(0, 170, 255), outline = Color3RGB(0, 130, 220), label = "Cola"},
-    bloxiade = {fill = Color3RGB(0, 170, 255), outline = Color3RGB(0, 130, 220), label = "Bloxiade"},
-    soda = {fill = Color3RGB(0, 170, 255), outline = Color3RGB(0, 130, 220), label = "Soda"},
-    battery = {fill = Color3RGB(255, 255, 0), outline = Color3RGB(200, 200, 0), label = "Battery"},
-    key = {fill = Color3RGB(255, 200, 0), outline = Color3RGB(220, 170, 0), label = "Key"},
+local ITEM_NAMES = {
+    ["Medkit"]          = {fill = Color3RGB(0, 255, 100),  outline = Color3RGB(0, 200, 80),   label = "Medkit"},
+    ["Bloxy Cola"]      = {fill = Color3RGB(0, 170, 255),  outline = Color3RGB(0, 130, 220),  label = "Bloxy Cola"},
+    ["Bloxiade"]        = {fill = Color3RGB(0, 170, 255),  outline = Color3RGB(0, 130, 220),  label = "Bloxiade"},
+    ["BloxyColaTest"]   = {fill = Color3RGB(0, 170, 255),  outline = Color3RGB(0, 130, 220),  label = "Bloxy Cola Test"},
+    ["Fake Bloxy Cola"] = {fill = Color3RGB(180, 80, 80),  outline = Color3RGB(150, 50, 50),  label = "Fake Bloxy Cola"},
+    ["Fake Medkit"]     = {fill = Color3RGB(180, 80, 80),  outline = Color3RGB(150, 50, 50),  label = "Fake Medkit"},
+    ["Flashlight"]      = {fill = Color3RGB(255, 255, 150),outline = Color3RGB(220, 220, 100),label = "Flashlight"},
+    ["Epicsauce"]       = {fill = Color3RGB(255, 120, 0),  outline = Color3RGB(220, 100, 0),  label = "Epicsauce"},
+    ["Glock"]           = {fill = Color3RGB(200, 200, 200),outline = Color3RGB(160, 160, 160),label = "Glock"},
+    ["Assault Rifle"]   = {fill = Color3RGB(200, 200, 200),outline = Color3RGB(160, 160, 160),label = "Assault Rifle"},
+    ["Broadsword"]      = {fill = Color3RGB(200, 200, 200),outline = Color3RGB(160, 160, 160),label = "Broadsword"},
+    ["Gravity Gun"]     = {fill = Color3RGB(180, 100, 255),outline = Color3RGB(140, 60, 220), label = "Gravity Gun"},
+    ["Green Key"]       = {fill = Color3RGB(0, 255, 100),  outline = Color3RGB(0, 200, 80),   label = "Green Key"},
 }
 
-local itemESPCache = {} -- [obj] = {highlight, billboard}
-
-local function getItemColorInfo(name)
-    local nl = name:lower()
-    for kw, info in pairs(ITEM_COLORS) do
-        if nl:find(kw) then
-            return info
-        end
-    end
-    return {fill = Color3RGB(255, 255, 255), outline = Color3RGB(200, 200, 200), label = name}
+-- Быстрый поиск по lower-case
+local ITEM_LOOKUP = {}
+for name, info in pairs(ITEM_NAMES) do
+    ITEM_LOOKUP[name:lower()] = info
 end
 
-local function isItemAvailable(obj)
-    if not obj or not obj.Parent then return false end
-    if obj:IsDescendantOf(Players) then return false end
-    local ancestor = obj.Parent
-    while ancestor and ancestor ~= workspace do
-        if ancestor:IsA("Player") or ancestor:FindFirstChildOfClass("Humanoid") then return false end
-        if ancestor.Name == "Backpack" then return false end
-        ancestor = ancestor.Parent
-    end
-    return true
+local itemESPCache = {} -- [Tool] = {highlight, billboard, textLabel, part}
+
+local function getItemInfo(toolName)
+    return ITEM_LOOKUP[toolName:lower()]
 end
 
-local function isMatchingItem(obj)
-    if not obj then return false end
-    local nl = obj.Name:lower()
-    for _, kw in pairs(ITEM_KEYWORDS) do
-        if nl:find(kw) then
-            return true
-        end
-    end
-    if obj:IsA("Tool") then
-        local handleCheck = obj:FindFirstChild("Handle")
-        if handleCheck then
-            local hnl = obj.Name:lower()
-            for _, kw in pairs(ITEM_KEYWORDS) do
-                if hnl:find(kw) then return true end
-            end
-        end
-    end
-    return false
+local function isItemOnMap(tool)
+    if not tool or not tool.Parent then return false end
+    if not tool:IsA("Tool") then return false end
+    -- Предмет на карте = лежит в workspace (не в персонаже, не в Backpack)
+    if tool:IsDescendantOf(Players) then return false end
+    local p = tool.Parent
+    if p:IsA("Backpack") then return false end
+    if p:FindFirstChildOfClass("Humanoid") then return false end
+    return tool:IsDescendantOf(workspace)
 end
 
-local function findItemPart(obj)
-    if not obj then return nil end
-    
-    if obj:IsA("BasePart") then
-        if obj.Transparency < 1 and obj.Size.Magnitude > 0.1 then
-            return obj
-        end
-        return nil
+local function getToolPart(tool)
+    if not tool then return nil end
+    local handle = tool:FindFirstChild("Handle")
+    if handle and handle:IsA("BasePart") then return handle end
+    for _, c in pairs(tool:GetDescendants()) do
+        if c:IsA("BasePart") and c.Transparency < 1 then return c end
     end
-    
-    if obj:IsA("Model") then
-        -- Приоритет: PrimaryPart > Handle > Main > первый видимый BasePart
-        if obj.PrimaryPart and obj.PrimaryPart.Transparency < 1 then
-            return obj.PrimaryPart
-        end
-        local handle = obj:FindFirstChild("Handle")
-        if handle and handle:IsA("BasePart") and handle.Transparency < 1 then
-            return handle
-        end
-        local main = obj:FindFirstChild("Main")
-        if main and main:IsA("BasePart") and main.Transparency < 1 then
-            return main
-        end
-        for _, child in pairs(obj:GetDescendants()) do
-            if child:IsA("BasePart") and child.Transparency < 1 and child.Size.Magnitude > 0.1 then
-                return child
-            end
-        end
-        return nil
-    end
-    
-    if obj:IsA("Tool") then
-        local handle = obj:FindFirstChild("Handle")
-        if handle and handle:IsA("BasePart") and handle.Transparency < 1 then
-            return handle
-        end
-        for _, child in pairs(obj:GetDescendants()) do
-            if child:IsA("BasePart") and child.Transparency < 1 and child.Size.Magnitude > 0.1 then
-                return child
-            end
-        end
-        return nil
-    end
-    
     return nil
 end
 
-local function addItemESP(obj)
-    if itemESPCache[obj] then return end
-    
-    local part = findItemPart(obj)
+local function addItemESP(tool, info)
+    if itemESPCache[tool] then return end
+    local part = getToolPart(tool)
     if not part then return end
-    
-    local colorInfo = getItemColorInfo(obj.Name)
-    
-    local adornTarget = obj
-    if obj:IsA("BasePart") then
-        adornTarget = obj
-    end
-    
+
     local hl = Instance.new("Highlight")
     hl.Name = "_IH"
-    hl.FillColor = colorInfo.fill
+    hl.FillColor = info.fill
     hl.FillTransparency = 0.5
-    hl.OutlineColor = colorInfo.outline
+    hl.OutlineColor = info.outline
     hl.OutlineTransparency = 0
     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    hl.Parent = adornTarget
-    
+    hl.Parent = tool
+
     local bb = Instance.new("BillboardGui")
     bb.Name = "_IB"
     bb.Adornee = part
@@ -180,88 +114,117 @@ local function addItemESP(obj)
     bb.StudsOffset = Vector3new(0, 2.5, 0)
     bb.AlwaysOnTop = true
     bb.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    bb.Parent = adornTarget
-    
+    bb.Parent = tool
+
     local tl = Instance.new("TextLabel")
     tl.Parent = bb
     tl.BackgroundTransparency = 1
     tl.Size = UDim2.new(1, 0, 1, 0)
     tl.Font = Enum.Font.GothamBold
-    tl.TextColor3 = colorInfo.outline
+    tl.TextColor3 = info.outline
     tl.TextSize = 13
     tl.TextScaled = true
     tl.TextStrokeTransparency = 0.4
     tl.TextStrokeColor3 = Color3RGB(0, 0, 0)
     tl.ZIndex = 10
-    
-    itemESPCache[obj] = {highlight = hl, billboard = bb, textLabel = tl, part = part}
+    tl.Text = info.label
+
+    itemESPCache[tool] = {highlight = hl, billboard = bb, textLabel = tl, part = part, info = info}
 end
 
-local function removeItemESP(obj)
-    local data = itemESPCache[obj]
+local function removeItemESP(tool)
+    local data = itemESPCache[tool]
     if data then
-        pcall(function() if data.highlight then data.highlight:Destroy() end end)
-        pcall(function() if data.billboard then data.billboard:Destroy() end end)
-        itemESPCache[obj] = nil
+        pcall(function() data.highlight:Destroy() end)
+        pcall(function() data.billboard:Destroy() end)
+        itemESPCache[tool] = nil
     end
 end
 
 local function clearAllItemESP()
-    for obj, data in pairs(itemESPCache) do
-        pcall(function() if data.highlight then data.highlight:Destroy() end end)
-        pcall(function() if data.billboard then data.billboard:Destroy() end end)
+    for tool, data in pairs(itemESPCache) do
+        pcall(function() data.highlight:Destroy() end)
+        pcall(function() data.billboard:Destroy() end)
     end
     itemESPCache = {}
 end
+
+-- Кешированный список предметов, обновляется в отдельном потоке чтобы не лагать
+local cachedItems = {} -- {tool1, tool2, ...}
+
+task.spawn(function()
+    while true do
+        local newList = {}
+        pcall(function()
+            for _, obj in pairs(workspace:GetDescendants()) do
+                if obj:IsA("Tool") and getItemInfo(obj.Name) and isItemOnMap(obj) then
+                    table_insert(newList, obj)
+                end
+            end
+        end)
+        cachedItems = newList
+        task.wait(2) -- Сканируем раз в 2 секунды — никаких лагов
+    end
+end)
+
+-- Также подписываемся на добавление новых объектов для мгновенного обнаружения
+pcall(function()
+    workspace.DescendantAdded:Connect(function(obj)
+        if obj:IsA("Tool") and getItemInfo(obj.Name) then
+            task.delay(0.1, function()
+                if isItemOnMap(obj) then
+                    local found = false
+                    for _, t in pairs(cachedItems) do
+                        if t == obj then found = true break end
+                    end
+                    if not found then
+                        table_insert(cachedItems, obj)
+                    end
+                end
+            end)
+        end
+    end)
+end)
 
 local function updateItemESP()
     if not S.ItemESP then
         clearAllItemESP()
         return
     end
-    
+
     local myChar = LP.Character
     local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
-    
-    -- Найти все предметы
-    local foundItems = {}
-    for _, obj in pairs(workspace:GetDescendants()) do
-        pcall(function()
-            if isItemAvailable(obj) and isMatchingItem(obj) then
-                -- Проверяем что у объекта есть видимая часть
-                local part = findItemPart(obj)
-                if part then
-                    foundItems[obj] = true
+
+    -- Собираем текущие живые предметы
+    local alive = {}
+    for _, tool in pairs(cachedItems) do
+        if tool and tool.Parent and isItemOnMap(tool) then
+            alive[tool] = true
+            local info = getItemInfo(tool.Name)
+            if info then
+                -- Добавить ESP если нет
+                if not itemESPCache[tool] then
+                    addItemESP(tool, info)
+                end
+                -- Обновить текст
+                local data = itemESPCache[tool]
+                if data and data.textLabel then
+                    local part = data.part
+                    if part and part.Parent and myHRP then
+                        local dist = mathfloor((myHRP.Position - part.Position).Magnitude)
+                        data.textLabel.Text = info.label .. " [" .. dist .. "m]"
+                    else
+                        data.textLabel.Text = info.label
+                    end
                 end
             end
-        end)
-    end
-    
-    -- Удалить ESP для исчезнувших предметов
-    for obj, _ in pairs(itemESPCache) do
-        if not foundItems[obj] or not obj.Parent or not isItemAvailable(obj) then
-            removeItemESP(obj)
         end
     end
-    
-    -- Добавить ESP для новых предметов и обновить дистанцию
-    for obj, _ in pairs(foundItems) do
-        if not itemESPCache[obj] then
-            addItemESP(obj)
-        end
-        
-        -- Обновить текст с дистанцией
-        local data = itemESPCache[obj]
-        if data and data.textLabel and myHRP then
-            local part = data.part
-            if part and part.Parent then
-                local dist = mathfloor((myHRP.Position - part.Position).Magnitude)
-                local colorInfo = getItemColorInfo(obj.Name)
-                data.textLabel.Text = colorInfo.label .. " [" .. dist .. "m]"
-            end
-        elseif data and data.textLabel then
-            local colorInfo = getItemColorInfo(obj.Name)
-            data.textLabel.Text = colorInfo.label
+
+    -- Удалить ESP мертвых
+    for tool, _ in pairs(itemESPCache) do
+        if not alive[tool] then
+            removeItemESP(tool)
         end
     end
 end
@@ -300,10 +263,10 @@ local function updateHitboxes()
             head.Color = Color3RGB(255, 0, 0)
         end
     end
-    local alive = {}
-    for i = 1, #targets do alive[targets[i]] = true end
+    local aliveChars = {}
+    for i = 1, #targets do aliveChars[targets[i]] = true end
     for char, origSize in pairs(hitboxOriginals) do
-        if not alive[char] then
+        if not aliveChars[char] then
             pcall(function()
                 local head = char:FindFirstChild("Head")
                 if head and head:IsA("BasePart") then
@@ -341,7 +304,7 @@ local function teleportBehind(targetName)
     myRoot.CFrame = CFramenew(behindPos, targetRoot.Position)
 end
 
--- ===== ITEM COLLECTION (исправлено — без лагов) =====
+-- ===== ITEM COLLECTION =====
 local function pressF()
     pcall(function()
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
@@ -386,36 +349,31 @@ local function collectItem(obj, savedCFrame)
     if not c then return false end
     local hrp = c:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
-    local part = findItemPart(obj)
+    local part = getToolPart(obj)
     if not part then return false end
-    
-    -- Быстрый сбор — максимум 2 попытки, минимум задержек
+
     for attempt = 1, 2 do
         if not obj or not obj.Parent then return true end
-        if not isItemAvailable(obj) then return true end
-        part = findItemPart(obj)
+        if not isItemOnMap(obj) then return true end
+        part = getToolPart(obj)
         if not part then return false end
-        
-        -- Телепорт к предмету
+
         hrp.CFrame = CFramenew(part.Position + Vector3new(0, 1, 0))
         task.wait(0.1)
-        
-        -- Пробуем все способы подобрать
+
         fireAllProximity(obj)
         pressF()
         fireAllClicks(obj)
-        
-        -- Пробуем напрямую переместить Tool
+
         if obj:IsA("Tool") then
             pcall(function() obj.Parent = c end)
             if obj.Parent == c then return true end
             pcall(function() obj.Parent = LP.Backpack end)
             if obj.Parent == LP.Backpack then return true end
         end
-        
+
         task.wait(0.1)
-        
-        -- Проверяем, подобрали ли
+
         if not obj.Parent then return true end
         for _, tool in pairs(LP.Backpack:GetChildren()) do
             if tool == obj then return true end
@@ -424,26 +382,19 @@ local function collectItem(obj, savedCFrame)
             if tool == obj then return true end
         end
     end
-    
     return false
 end
 
-local function findItemsByKeywords(keywords)
+local function findItemsByNames(names)
     local found = {}
-    for _, o in pairs(workspace:GetDescendants()) do
-        pcall(function()
-            if isItemAvailable(o) then
-                local part = findItemPart(o)
-                if not part then return end -- ПРОПУСКАЕМ если нет видимой части!
-                local nl = o.Name:lower()
-                for _, kw in pairs(keywords) do
-                    if nl:find(kw) then
-                        table_insert(found, o)
-                        break
-                    end
-                end
+    local nameSet = {}
+    for _, n in pairs(names) do nameSet[n:lower()] = true end
+    for _, tool in pairs(cachedItems) do
+        if tool and tool.Parent and isItemOnMap(tool) then
+            if nameSet[tool.Name:lower()] then
+                table_insert(found, tool)
             end
-        end)
+        end
     end
     return found
 end
@@ -455,17 +406,16 @@ local function tpBloxyCola()
     if not hrp then return end
     local sv = hrp.CFrame
     task.spawn(function()
-        local keywords = {"bloxy", "cola", "bloxiade", "soda"}
-        local items = findItemsByKeywords(keywords)
+        local items = findItemsByNames({"Bloxy Cola", "Bloxiade", "BloxyColaTest"})
         if #items == 0 then return end
         table.sort(items, function(a, b)
-            local pa = findItemPart(a)
-            local pb = findItemPart(b)
+            local pa = getToolPart(a)
+            local pb = getToolPart(b)
             if not pa or not pb then return false end
             return (pa.Position - hrp.Position).Magnitude < (pb.Position - hrp.Position).Magnitude
         end)
         for _, item in pairs(items) do
-            if item and item.Parent and isItemAvailable(item) then
+            if item and item.Parent and isItemOnMap(item) then
                 collectItem(item, sv)
                 break
             end
@@ -485,17 +435,16 @@ local function tpMedkit()
     if not hrp then return end
     local sv = hrp.CFrame
     task.spawn(function()
-        local keywords = {"medkit", "med_kit", "firstaid", "first_aid", "bandage", "healthkit", "health_kit", "medical"}
-        local items = findItemsByKeywords(keywords)
+        local items = findItemsByNames({"Medkit"})
         if #items == 0 then return end
         table.sort(items, function(a, b)
-            local pa = findItemPart(a)
-            local pb = findItemPart(b)
+            local pa = getToolPart(a)
+            local pb = getToolPart(b)
             if not pa or not pb then return false end
             return (pa.Position - hrp.Position).Magnitude < (pb.Position - hrp.Position).Magnitude
         end)
         for _, item in pairs(items) do
-            if item and item.Parent and isItemAvailable(item) then
+            if item and item.Parent and isItemOnMap(item) then
                 collectItem(item, sv)
                 break
             end
@@ -516,25 +465,14 @@ local function tpNearestItem()
     local sv = hrp.CFrame
     task.spawn(function()
         local best, bd = nil, mathhuge
-        local allKeywords = {"bloxy", "cola", "bloxiade", "soda", "medkit", "med_kit", "firstaid", "first_aid", "bandage", "healthkit", "health_kit", "medical", "battery", "key", "pickup"}
-        for _, o in pairs(workspace:GetDescendants()) do
-            pcall(function()
-                if isItemAvailable(o) then
-                    local isItem = false
-                    if o:IsA("Tool") then isItem = true end
-                    local nl = o.Name:lower()
-                    for _, kw in pairs(allKeywords) do
-                        if nl:find(kw) then isItem = true break end
-                    end
-                    if isItem then
-                        local part = findItemPart(o)
-                        if part then
-                            local d = (part.Position - hrp.Position).Magnitude
-                            if d < bd then bd = d best = o end
-                        end
-                    end
+        for _, tool in pairs(cachedItems) do
+            if tool and tool.Parent and isItemOnMap(tool) and getItemInfo(tool.Name) then
+                local part = getToolPart(tool)
+                if part then
+                    local d = (part.Position - hrp.Position).Magnitude
+                    if d < bd then bd = d best = tool end
                 end
-            end)
+            end
         end
         if best then
             collectItem(best, sv)
@@ -557,7 +495,7 @@ task.spawn(function()
             local newCache = {}
             local allObjects = {}
             local seenPositions = {}
-            
+
             for _, v in pairs(workspace:GetDescendants()) do
                 if v.Name:lower():find("generator") then
                     allObjects[v] = true
@@ -573,7 +511,7 @@ task.spawn(function()
                     end
                 end
             end
-            
+
             for _, v in pairs(workspace:GetDescendants()) do
                 if v:IsA("BasePart") and v.Name:lower():find("generator") then
                     local pm = v:FindFirstAncestorWhichIsA("Model")
@@ -590,7 +528,7 @@ task.spawn(function()
                     end
                 end
             end
-            
+
             for obj, _ in pairs(allGenObjects) do
                 if obj and obj.Parent then
                     local isMain = false
@@ -602,7 +540,7 @@ task.spawn(function()
                     end
                 end
             end
-            
+
             allGenObjects = allObjects
             genCache = newCache
         end)
@@ -673,7 +611,7 @@ task.spawn(function()
                         end
                     end
                 end
-                
+
                 for _, o in pairs(genCache) do
                     if o and o.Parent then
                         aHL(o, "_GH", Color3RGB(255,200,0), Color3RGB(255,160,0))
@@ -681,7 +619,7 @@ task.spawn(function()
                     end
                 end
             end
-            
+
             -- Item ESP
             updateItemESP()
         end)

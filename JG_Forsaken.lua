@@ -104,7 +104,6 @@ local function AutoWin()
     if autoWinRunning then return end
     autoWinRunning = true
     local UIS = game:GetService("UserInputService")
-    local RunService = game:GetService("RunService")
     task.spawn(function()
         while S.AutoWin do
             local myChar = LP.Character
@@ -113,7 +112,7 @@ local function AutoWin()
                 task.wait(0.5)
             else
                 local targets = getTargets()
-                local best, bd = nil, mathhuge
+                local best, bd = nil, math.huge
                 for i = 1, #targets do
                     local char = targets[i]
                     local ok = isValid(char)
@@ -135,43 +134,32 @@ local function AutoWin()
                         local startCF = myRoot.CFrame
                         local cam = workspace.CurrentCamera
 
-                        local aimConn
-                        aimConn = RunService.RenderStepped:Connect(function()
-                            if not S.AutoWin or not targetHead or not targetHead.Parent then
-                                if aimConn then aimConn:Disconnect() aimConn = nil end
-                                return
-                            end
-                            local headPos = targetHead.Position
-                            cam.CFrame = CFramenew(cam.CFrame.Position, headPos)
-                            local screenPos, onScreen = cam:WorldToViewportPoint(headPos)
-                            if onScreen and mousemoverel then
-                                local mousePos = UIS:GetMouseLocation()
-                                local dx = screenPos.X - mousePos.X
-                                local dy = screenPos.Y - mousePos.Y
-                                mousemoverel(dx, dy)
-                            end
-                        end)
-
                         while S.AutoWin and targetHum and targetHum.Parent and targetHum.Health > 0 and targetRoot.Parent do
                             local c = LP.Character
                             local r = c and c:FindFirstChild("HumanoidRootPart")
                             if not r then break end
 
                             local headPos = targetHead.Position
-                            local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 3.5) + Vector3new(0, 1.2, 0)
-                            r.CFrame = CFramenew(behindPos, headPos)
-                            r.AssemblyLinearVelocity = Vector3new(0,0,0)
-                            r.AssemblyAngularVelocity = Vector3new(0,0,0)
+                            local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 3.5) + Vector3.new(0, 1.2, 0)
+                            r.CFrame = CFrame.new(behindPos, headPos)
+                            r.AssemblyLinearVelocity = Vector3.new(0,0,0)
+                            r.AssemblyAngularVelocity = Vector3.new(0,0,0)
 
-                            cam.CFrame = CFramenew(r.CFrame.Position + Vector3new(0,1.5,0), headPos)
+                            -- Мгновенно наводим мышь на голову (БЕЗ ПЛАВНОСТИ)
+                            if mousemoverel then
+                                local screenPos, onScreen = cam:WorldToViewportPoint(headPos)
+                                if onScreen then
+                                    local mousePos = UIS:GetMouseLocation()
+                                    local dx = screenPos.X - mousePos.X
+                                    local dy = screenPos.Y - mousePos.Y
+                                    mousemoverel(dx, dy)
+                                end
+                            end
 
-                            task.wait(0.05)
-
+                            -- Выстрел
                             pcall(function() if mouse1click then mouse1click() end end)
                             task.wait(0.08)
                         end
-
-                        if aimConn then aimConn:Disconnect() aimConn = nil end
 
                         local c = LP.Character
                         local r = c and c:FindFirstChild("HumanoidRootPart")

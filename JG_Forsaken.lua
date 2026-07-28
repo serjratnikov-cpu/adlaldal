@@ -1,5 +1,6 @@
-
 return function(S, getTargets, isValid, Players, LP, mathhuge, mathfloor, Vector3new, CFramenew, Color3RGB, task, pcall, workspace, table_insert)
+
+local UIS = game:GetService("UserInputService")
 
 local function aHL(p,n,fc,oc)
     if p:FindFirstChild(n) then return end
@@ -135,23 +136,35 @@ local function AutoWin()
                             local c = LP.Character
                             local r = c and c:FindFirstChild("HumanoidRootPart")
                             if not r then break end
-                            
-                            local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 3.5) + Vector3.new(0, 1.2, 0)
-                            r.CFrame = CFrame.new(behindPos, targetHead.Position)
-                            
-                            cam.CFrame = CFrame.new(cam.CFrame.Position, targetHead.Position)
-                            
+
+                            local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 3.5) + Vector3new(0, 1.2, 0)
+                            r.CFrame = CFramenew(behindPos, targetHead.Position)
+
+                            task.wait(0.01)
+
+                            cam.CFrame = CFramenew(cam.CFrame.Position, targetHead.Position)
+
                             local screenPos, onScreen = cam:WorldToViewportPoint(targetHead.Position)
                             if onScreen then
                                 local mousePos = UIS:GetMouseLocation()
-                                mousemoverel(screenPos.X - mousePos.X, screenPos.Y - mousePos.Y)
+                                local dx = screenPos.X - mousePos.X
+                                local dy = screenPos.Y - mousePos.Y
+                                if mousemoverel then
+                                    mousemoverel(dx, dy)
+                                end
                             end
 
                             task.wait(0.01)
-                            if mouse1click then mouse1click() end
-                            task.wait(0.05)
+
+                            pcall(function()
+                                if mouse1click then mouse1click() end
+                            end)
+
+                            task.wait(0.08)
                         end
-                        if myRoot then myRoot.CFrame = startCF end
+                        local c = LP.Character
+                        local r = c and c:FindFirstChild("HumanoidRootPart")
+                        if r then r.CFrame = startCF end
                     end
                     task.wait(0.1)
                 end
@@ -161,7 +174,7 @@ local function AutoWin()
         autoWinRunning = false
     end)
 end
-    
+
 local function tpBloxyCola()
     local c = LP.Character
     if not c then return end

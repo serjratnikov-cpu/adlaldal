@@ -103,6 +103,7 @@ local autoWinRunning = false
 local function AutoWin()
     if autoWinRunning then return end
     autoWinRunning = true
+    local UIS = game:GetService("UserInputService")
     task.spawn(function()
         while S.AutoWin do
             local myChar = LP.Character
@@ -128,39 +129,55 @@ local function AutoWin()
                 else
                     local targetRoot = best:FindFirstChild("HumanoidRootPart")
                     local targetHum = best:FindFirstChildOfClass("Humanoid")
-                    if targetRoot and targetHum and targetHum.Health > 0 then
+                    local targetHead = best:FindFirstChild("Head")
+                    if targetRoot and targetHum and targetHum.Health > 0 and targetHead then
                         local startCF = myRoot.CFrame
                         local cam = workspace.CurrentCamera
                         while S.AutoWin and targetHum and targetHum.Parent and targetHum.Health > 0 and targetRoot.Parent do
                             local c = LP.Character
                             local r = c and c:FindFirstChild("HumanoidRootPart")
                             if not r then break end
-                            
-                            local head = best:FindFirstChild("Head") or targetRoot
-                            local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 3.5) + Vector3new(0, 1.2, 0)
-                            
-                            r.CFrame = CFramenew(behindPos, head.Position)
-                            cam.CFrame = CFramenew(cam.CFrame.Position, head.Position)
 
-                            local screenPos, onScreen = cam:WorldToScreenPoint(head.Position)
-                            if onScreen then
-                                local mousePos = UIS:GetMouseLocation()
-                                local dx = screenPos.X - mousePos.X
-                                local dy = screenPos.Y - mousePos.Y
-                                if mousemoverel then
-                                    mousemoverel(dx, dy)
+                            local headPos = targetHead.Position
+                            local behindPos = targetRoot.Position - (targetRoot.CFrame.LookVector * 3.5) + Vector3new(0, 1.2, 0)
+
+                            r.CFrame = CFramenew(behindPos, headPos)
+                            r.AssemblyLinearVelocity = Vector3new(0, 0, 0)
+                            r.AssemblyAngularVelocity = Vector3new(0, 0, 0)
+
+                            task.wait()
+
+                            cam.CFrame = CFramenew(r.CFrame.Position + Vector3new(0, 1.5, 0), headPos)
+
+                            task.wait()
+
+                            for attempt = 1, 5 do
+                                local screenPos, onScreen = cam:WorldToViewportPoint(headPos)
+                                if onScreen then
+                                    local mousePos = UIS:GetMouseLocation()
+                                    local dx = screenPos.X - mousePos.X
+                                    local dy = screenPos.Y - mousePos.Y
+                                    if math.abs(dx) < 3 and math.abs(dy) < 3 then
+                                        break
+                                    end
+                                    if mousemoverel then
+                                        mousemoverel(dx, dy)
+                                    end
+                                    task.wait()
+                                else
+                                    break
                                 end
                             end
 
-                            task.wait(0.02)
+                            task.wait()
                             pcall(function() if mouse1click then mouse1click() end end)
-                            task.wait(0.1)
+                            task.wait(0.08)
                         end
                         local c = LP.Character
                         local r = c and c:FindFirstChild("HumanoidRootPart")
                         if r then r.CFrame = startCF end
                     end
-                    task.wait(0.25)
+                    task.wait(0.1)
                 end
             end
             task.wait(0.05)

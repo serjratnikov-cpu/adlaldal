@@ -116,18 +116,6 @@ local function stopCurrentFly()
     end
 end
 
-local function getGroundPosition(pos)
-    local ray = RaycastParams.new()
-    ray.FilterType = Enum.RaycastFilterType.Blacklist
-    local ignore = {LP.Character}
-    ray.FilterDescendantsInstances = ignore
-    local hit = ws:Raycast(pos + V3new(0, 10, 0), V3new(0, -25, 0), ray)
-    if hit then
-        return hit.Position.Y
-    end
-    return pos.Y - 3
-end
-
 local function flyTo(targetPos, speed)
     stopCurrentFly()
     local ch = LP.Character
@@ -137,72 +125,96 @@ local function flyTo(targetPos, speed)
     if not hrp or not hum then return end
 
     speed = speed or (S.AutoFarmSpeed or 120)
-
     local alive = true
-    local touchCount = 0
-    local lastGroundY = nil
-    
-    local noclipConn = RS.Stepped:Connect(function()
-        if not alive then return end
-        pcall(function()
-            if ch and hrp then
-                for _, part in ipairs(ch:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
-                    end
-                end
-                hrp.Velocity = V3new(0, 0, 0)
-                hrp.RotVelocity = V3new(0, 0, 0)
-                hum:ChangeState(Enum.HumanoidStateType.Running)
-                hum:ChangeState(Enum.HumanoidStateType.Jumping)
-            end
-        end)
-    end)
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterDescendantsInstances = {ch}
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+    local platform = Instance.new("Part")
+    platform.Name = "Terrain"
+    platform.Size = V3new(18, 1.2, 18)
+    platform.Transparency = 1
+    platform.CanCollide = true
+    platform.Anchored = true
+    platform.CFrame = hrp.CFrame * CFnew(0, -3.5, 0)
+    platform.Parent = ws
+
+    local oldWS = hum.WalkSpeed
+    local oldJP = hum.JumpPower
 
     currentFlyCleanup = function()
         alive = false
-        pcall(function() noclipConn:Disconnect() end)
+        pcall(function() platform:Destroy() end)
+        pcall(function() hum.WalkSpeed = oldWS end)
+        pcall(function() hum.JumpPower = oldJP end)
     end
+
+    local CHUNK = 22
+    local GROUND_TIME = 0.35
+    local lastGroundY = hrp.Position.Y
 
     while alive and SD.AutoFarmActive do
         if not ch or not ch.Parent or not hrp or not hrp.Parent then break end
         local currentPos = hrp.Position
-        local dist = (currentPos - targetPos).Magnitude
-        if dist < 4 then break end
-        
-        local groundY = getGroundPosition(currentPos)
-        lastGroundY = groundY
-        
-        local dir = (targetPos - currentPos).Unit
-        local nextPos = currentPos + (dir * (speed * 0.05))
-        
-        if nextPos.Y < groundY + 1.5 then
-            nextPos = V3new(nextPos.X, groundY + 2, nextPos.Z)
-        elseif nextPos.Y > groundY + 5 then
-            nextPos = V3new(nextPos.X, groundY + 2.5, nextPos.Z)
+        local toTarget = targetPos - currentPos
+        local horizVec = V3new(toTarget.X, 0, toTarget.Z)
+        local horizDist = horizVec.Magnitude
+        if horizDist < 6 and math.abs(toTarget.Y) < 20 then break end
+
+        local dir2D = horizDist > 0.01 and horizVec.Unit or V3new(0, 0, 0)
+        local step = math.min(CHUNK, horizDist)
+        local nextX = currentPos.X + dir2D.X * step
+        local nextZ = currentPos.Z + dir2D.Z * step
+
+        local groundY = lastGroundY
+        local ray = ws:Raycast(V3new(nextX, 5000, nextZ), V3new(0, -10000, 0), rayParams)
+        if ray then
+            groundY = ray.Position.Y + 3.0
+            lastGroundY = groundY
         end
-        
-        touchCount = touchCount + 1
-        if touchCount % 3 == 0 then
-            local checkPos = V3new(nextPos.X, nextPos.Y - 0.5, nextPos.Z)
-            local hit = ws:Raycast(checkPos, V3new(0, -1, 0), RaycastParams.new())
-            if hit then
-                nextPos = V3new(nextPos.X, hit.Position.Y + 2.5, nextPos.Z)
+
+        hum.WalkSpeed = 0
+        hum.JumpPower = 0
+
+        for _, part in ipairs(ch:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
             end
         end
-        
-        if touchCount % 50 == 0 then
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
-            task.wait(0.05)
+
+        local finalPos = V3new(nextX, groundY, nextZ)
+        local lookTarget = V3new(targetPos.X, groundY, targetPos.Z)
+        hrp.CFrame = CFnew(finalPos, lookTarget)
+        hrp.Velocity = V3new(0, 0, 0)
+        hrp.RotVelocity = V3new(0, 0, 0)
+
+        platform.CFrame = CFnew(finalPos.X, groundY - 3.5, finalPos.Z)
+
+        task.wait(0.03)
+
+        for _, part in ipairs(ch:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = true
+            end
         end
-        
-        if touchCount % 30 == 0 then
-            hrp.CFrame = CFnew(nextPos, targetPos) + V3new(0, 2, 0)
-        else
-            hrp.CFrame = CFnew(nextPos, targetPos)
+        hrp.CanCollide = true
+
+        platform.CFrame = CFnew(finalPos.X, groundY - 3.5, finalPos.Z)
+        hrp.CFrame = CFnew(finalPos, lookTarget)
+        hrp.Velocity = V3new(0, 0, 0)
+        hrp.RotVelocity = V3new(0, 0, 0)
+        hum:ChangeState(Enum.HumanoidStateType.Running)
+
+        local waitStart = tick()
+        while tick() - waitStart < GROUND_TIME do
+            if not alive or not SD.AutoFarmActive then break end
+            platform.CFrame = CFnew(hrp.Position.X, hrp.Position.Y - 3.5, hrp.Position.Z)
+            hrp.Velocity = V3new(0, 0, 0)
+            hrp.RotVelocity = V3new(0, 0, 0)
+            hum:ChangeState(Enum.HumanoidStateType.Running)
+            task.wait()
         end
-        
-        task.wait(0.04)
     end
 
     stopCurrentFly()

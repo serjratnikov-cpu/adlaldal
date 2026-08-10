@@ -1,7 +1,6 @@
 return function(S, LP, Players, ws, RS, Camera, Color3RGB, V3new, CFnew, mathhuge, pcall, task, table_insert, string_find, string_lower, tostring, mathfloor)
 
 local SD = {}
-
 SD.AutoFarmActive = false
 SD.AutoFarmStatus = "Idle"
 SD.AutoFarmLaps = 0
@@ -11,15 +10,18 @@ SD.AimPolice = false
 
 local policeHighlights = {}
 local statusLabel = nil
-local currentFlyCleanup = nil
+local currentMoveCleanup = nil
 
-local TEAM_NAMES_POLICE = {"police","border patrol","fbi","swat","bortac","army","sheriff","trooper","marshal","officer","cop","patrol"}
+local TEAM_NAMES_POLICE = {
+    "police","border patrol","fbi","swat","bortac","army",
+    "sheriff","trooper","marshal","officer","cop","patrol"
+}
 
 local function isPolice(player)
     if not player then return false end
     local team = player.Team
     if team then
-        local tLow = string_lower(team.Name)
+        local tLow = team.Name:lower()
         for _, n in ipairs(TEAM_NAMES_POLICE) do
             if string_find(tLow, n) then return true end
         end
@@ -28,9 +30,17 @@ local function isPolice(player)
     if ch then
         for _, desc in ipairs(ch:GetDescendants()) do
             if desc:IsA("Accessory") or desc:IsA("Shirt") or desc:IsA("Pants") then
-                local dLow = string_lower(desc.Name)
+                local dLow = desc.Name:lower()
                 for _, n in ipairs(TEAM_NAMES_POLICE) do
                     if string_find(dLow, n) then return true end
+                end
+            end
+        end
+        for _, tool in ipairs(ch:GetChildren()) do
+            if tool:IsA("Tool") then
+                local tLow = tool.Name:lower()
+                if string_find(tLow,"taser") or string_find(tLow,"handcuff") or string_find(tLow,"baton") or string_find(tLow,"badge") then
+                    return true
                 end
             end
         end
@@ -84,135 +94,141 @@ end
 
 local function setStatus(text)
     SD.AutoFarmStatus = text
-    if statusLabel then pcall(function() statusLabel.Text = text end) end
+    if statusLabel then pcall(function() statusLabel.Text = "Статус: " .. text end) end
 end
 
-local function stopCurrentFly()
-    if currentFlyCleanup then
-        pcall(function() currentFlyCleanup() end)
-        currentFlyCleanup = nil
+local function stopMovement()
+    if currentMoveCleanup then
+        pcall(function() currentMoveCleanup() end)
+        currentMoveCleanup = nil
     end
 end
 
-local function flyTo(targetPos, speed)
-    stopCurrentFly()
+local function groundMoveTo(targetPos, speed)
+    stopMovement()
     local ch = LP.Character
     if not ch then return end
     local hrp = ch:FindFirstChild("HumanoidRootPart")
-    local hum = ch:FindFirstChildOfClass("Humanoid")
-    if not hrp or not hum then return end
-
-    speed = speed or (S.AutoFarmSpeed or 70)
+    if not hrp then return end
+    
+    speed = speed or 300
     local alive = true
-    local noclipConn
-
-    pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false) end)
-    pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) end)
-
-    local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = V3new(mathhuge, mathhuge, mathhuge)
-    bv.Velocity = V3new(0, 0, 0)
-    bv.Parent = hrp
-
-    currentFlyCleanup = function()
-        alive = false
-        if noclipConn then noclipConn:Disconnect() end
-        if bv then bv:Destroy() end
-        pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true) end)
-        pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true) end)
-        currentFlyCleanup = nil
-    end
-
-    noclipConn = RS.Stepped:Connect(function()
-        if ch then
-            for _, p in ipairs(ch:GetDescendants()) do
+    
+    local noclipConn = RS.Stepped:Connect(function()
+        if not alive then return end
+        pcall(function()
+            for _, p in pairs(ch:GetDescendants()) do
                 if p:IsA("BasePart") then p.CanCollide = false end
             end
-        end
+        end)
     end)
     
+    currentMoveCleanup = function()
+        alive = false
+        pcall(function() noclipConn:Disconnect() end)
+    end
+
     while alive and SD.AutoFarmActive do
-        if not hrp or not hrp.Parent then break end
-        
         local currentPos = hrp.Position
-        local dist = (currentPos - targetPos).Magnitude
-        
+        local diff = targetPos - currentPos
+        local dist = diff.Magnitude
         if dist < 4 then break end
         
-        local dir = (targetPos - currentPos).Unit
-        local dt = task.wait()
-        
-        local moveDist = speed * dt
-        if moveDist > dist then moveDist = dist end
-        
-        hrp.CFrame = CFnew(currentPos + (dir * moveDist))
-        hrp.Velocity = V3new(0, 0, 0)
-        hrp.RotVelocity = V3new(0, 0, 0)
-    end<!--citation:2-->
-
-    stopCurrentFly()
-    task.wait(0.2)
+        local dir = diff.Unit
+        local moveStep = dir * (speed * task.wait())
+        if moveStep.Magnitude > dist then
+            hrp.CFrame = CFnew(targetPos)
+        else
+            hrp.CFrame = CFnew(currentPos + moveStep, targetPos)
+        end
+    end
+    stopMovement()
 end
 
-local function findPrompt(keywords)
-    for _, desc in ipairs(ws:GetDescendants()) do
-        if desc:IsA("ProximityPrompt") then
-            local txt = string_lower(desc.ActionText or "") .. " " .. string_lower(desc.ObjectText or "") .. " " .. string_lower(desc.Parent and desc.Parent.Name or "")
-            for _, word in ipairs(keywords) do
-                if string_find(txt, word) then
-                    return desc
+local function fireProximityPrompt(prompt)
+    if not prompt then return end
+    pcall(function()
+        local oldDist = prompt.MaxActivationDistance
+        prompt.MaxActivationDistance = 9999
+        pcall(function() fireproximityprompt(prompt) end)
+        task.wait(0.2)
+        prompt.MaxActivationDistance = oldDist
+    end)
+end
+
+local function getPartPosition(obj)
+    if not obj then return nil end
+    if obj:IsA("BasePart") then return obj.Position end
+    if obj:IsA("Model") then
+        local hrp = obj:FindFirstChild("HumanoidRootPart")
+        if hrp then return hrp.Position end
+        local prim = obj.PrimaryPart
+        if prim then return prim.Position end
+        local bp = obj:FindFirstChildWhichIsA("BasePart")
+        if bp then return bp.Position end
+    end
+    return nil
+end
+
+local function findNearestArea(names)
+    local ch = LP.Character
+    if not ch or not ch:FindFirstChild("HumanoidRootPart") then return nil end
+    local myPos = ch.HumanoidRootPart.Position
+    local nearestPos = nil
+    local nearestDist = mathhuge
+
+    for _, name in ipairs(names) do
+        local nameLow = name:lower()
+        for _, child in ipairs(ws:GetDescendants()) do
+            if child.Name:lower() == nameLow or string_find(child.Name:lower(), nameLow) then
+                local pos = getPartPosition(child)
+                if pos then
+                    local d = (myPos - pos).Magnitude
+                    if d < nearestDist then
+                        nearestDist = d
+                        nearestPos = pos
+                    end
                 end
             end
         end
     end
-    return nil
+    return nearestPos
 end
 
-local function getPromptPos(prompt)
-    if not prompt then return nil end
-    local p = prompt.Parent
-    if p and p:IsA("BasePart") then return p.Position end
-    if p and p:IsA("Model") then
-        if p.PrimaryPart then return p.PrimaryPart.Position end
-        local bp = p:FindFirstChildWhichIsA("BasePart")
-        if bp then return bp.Position end
-    end
-    local p2 = prompt:FindFirstAncestorWhichIsA("BasePart")
-    if p2 then return p2.Position end
-    return nil
-end
-
-local function firePrompt(prompt)
-    if not prompt then return end
-    pcall(function()
-        local oldDist = prompt.MaxActivationDistance
-        local oldLoS = prompt.RequiresLineOfSight
-        prompt.MaxActivationDistance = mathhuge
-        prompt.RequiresLineOfSight = false
-        if fireproximityprompt then
-            fireproximityprompt(prompt)
-        else
-            prompt:InputHoldBegin()
-            task.wait(prompt.HoldDuration + 0.1)
-            prompt:InputHoldEnd()
+local function findNPC(name)
+    local nameLow = name:lower()
+    for _, child in ipairs(ws:GetDescendants()) do
+        if child:IsA("Model") and (child.Name == name or string_find(child.Name:lower(), nameLow)) then
+            if child:FindFirstChildOfClass("Humanoid") then return child end
         end
-        task.wait(0.3)
-        prompt.MaxActivationDistance = oldDist
-        prompt.RequiresLineOfSight = oldLoS
-    end)
+    end
+    return nil
 end
 
-local function findButtonInGUI(bName)
+local function findProximityPrompt(parent, actionText)
+    if not parent then return nil end
+    for _, desc in ipairs(parent:GetDescendants()) do
+        if desc:IsA("ProximityPrompt") then
+            if not actionText then return desc end
+            local actLow = actionText:lower()
+            if desc.ActionText and string_find(desc.ActionText:lower(), actLow) then return desc end
+            if desc.ObjectText and string_find(desc.ObjectText:lower(), actLow) then return desc end
+        end
+    end
+    return nil
+end
+
+local function findButtonInGUI(buttonName)
     local pg = LP.PlayerGui
     if not pg then return nil end
-    local bLow = string_lower(bName)
+    local bLow = buttonName:lower()
     for _, gui in ipairs(pg:GetDescendants()) do
         if (gui:IsA("TextButton") or gui:IsA("ImageButton")) then
             local vis = true
             pcall(function() vis = gui.Visible end)
             if vis then
-                if gui.Name and string_find(string_lower(gui.Name), bLow) then return gui end
-                if gui:IsA("TextButton") and gui.Text and string_find(string_lower(gui.Text), bLow) then return gui end
+                if gui.Name and string_find(gui.Name:lower(), bLow) then return gui end
+                if gui:IsA("TextButton") and gui.Text and string_find(gui.Text:lower(), bLow) then return gui end
             end
         end
     end
@@ -221,137 +237,170 @@ end
 
 local function clickButton(btn)
     if not btn then return false end
-    local ok = false
-    pcall(function() if firesignal then firesignal(btn.MouseButton1Click) ok = true end end)
+    pcall(function() if firesignal then firesignal(btn.MouseButton1Click) end end)
     pcall(function() if firesignal then firesignal(btn.Activated) end end)
-    if not ok then pcall(function() btn.MouseButton1Click:Fire() ok = true end) end
-    return ok
+    return true
 end
 
-local function tryFireRemote(name)
+local function tryFireRemote(name, ...)
+    local args = table.pack(...)
     local rs = game:GetService("ReplicatedStorage")
     for _, child in ipairs(rs:GetDescendants()) do
-        if child:IsA("RemoteEvent") and string_find(string_lower(child.Name), string_lower(name)) then
-            pcall(function() child:FireServer("Fake Diamond Ring") end)
+        if child:IsA("RemoteEvent") and (child.Name == name or string_find(child.Name:lower(), name:lower())) then
+            pcall(function() child:FireServer(table.unpack(args, 1, args.n)) end)
             return true
         end
     end
     return false
 end
 
-local function doFarmCycle()
-    if not SD.AutoFarmActive then return end
+local function interactPromptNear(name, actionText)
+    local ch = LP.Character
+    if not ch or not ch:FindFirstChild("HumanoidRootPart") then return false end
+    local hrp = ch.HumanoidRootPart
 
-    local buyPrompt = findPrompt({"buy ring", "fake diamond", "ring", "buy", "black market"})
-    local buyPos = getPromptPos(buyPrompt)
-    
-    if buyPos then
-        setStatus("Полет к магазину...")
-        flyTo(buyPos + V3new(0, 3, 0), S.AutoFarmSpeed or 70)
-        task.wait(0.5)
-        for i = 1, 5 do
-            if not SD.AutoFarmActive then return end
-            setStatus("Покупка " .. i .. "/5")
-            firePrompt(buyPrompt)
-            tryFireRemote("BuyRing")
-            tryFireRemote("Buy")
-            local btn = findButtonInGUI("Buy") or findButtonInGUI("Purchase")
-            if btn then clickButton(btn) end
-            task.wait(0.5)
+    local target = findNPC(name)
+    if not target then
+        for _, child in ipairs(ws:GetDescendants()) do
+            if child.Name == name or string_find(child.Name:lower(), name:lower()) then
+                target = child
+                break
+            end
         end
-    else
-        setStatus("Не найден магазин (ищите ближе)")
-        task.wait(2)
     end
 
-    if not SD.AutoFarmActive then return end
+    if target then
+        local pos = getPartPosition(target)
+        if pos then
+            if (hrp.Position - pos).Magnitude > 8 then
+                groundMoveTo(pos, 300)
+                task.wait(0.2)
+            end
+            local pp = findProximityPrompt(target, actionText) or findProximityPrompt(target.Parent, actionText)
+            if pp then
+                fireProximityPrompt(pp)
+                return true
+            end
+        end
+    end
+    return false
+end
 
-    local sellPrompt = findPrompt({"sell goods", "smuggled", "seller", "smuggler", "sell"})
-    local sellPos = getPromptPos(sellPrompt)
+local function buyRings()
+    setStatus("Покупка колец...")
+    local bought = false
+    local buyTargets = {{"Fake Diamond Ring","Buy"}, {"Ring","Buy"}, {"Jewelry","Buy"}}
+    for _, pair in ipairs(buyTargets) do
+        if bought then break end
+        bought = interactPromptNear(pair[1], pair[2])
+    end
+    if not bought then
+        local remotes = {"BuyRing","PurchaseRing","BuyItem"}
+        for _, rn in ipairs(remotes) do
+            if tryFireRemote(rn, "Fake Diamond Ring") then bought = true break end
+        end
+    end
+    if not bought then
+        local btn = findButtonInGUI("Buy")
+        if btn then clickButton(btn) bought = true end
+    end
+    return bought
+end
 
-    if sellPos then
-        setStatus("Полет к продавцу...")
-        flyTo(sellPos + V3new(0, 3, 0), S.AutoFarmSpeed or 70)
-        task.wait(0.5)
-        setStatus("Продажа...")
-        firePrompt(sellPrompt)
+local function sellGoods()
+    setStatus("Продажа...")
+    local sold = false
+    local sellTargets = {{"Smuggled Goods Seller","Sell"}, {"Seller","Sell"}, {"Goods","Sell"}}
+    for _, pair in ipairs(sellTargets) do
+        if sold then break end
+        sold = interactPromptNear(pair[1], pair[2])
+    end
+    if not sold then
         tryFireRemote("SellGoods")
-        tryFireRemote("Sell")
-        local btn = findButtonInGUI("Sell")
-        if btn then clickButton(btn) end
-        task.wait(1)
-    else
-        setStatus("Не найден продавец (ищите ближе)")
-        task.wait(2)
     end
+    return sold
+end
 
+local function launderMoney()
+    setStatus("Отмывка...")
+    local done = false
+    local targets = {{"Launder",nil},{"Money Wash",nil},{"Wash","Launder"}}
+    for _, pair in ipairs(targets) do
+        if done then break end
+        done = interactPromptNear(pair[1], pair[2])
+    end
+    if not done then
+        tryFireRemote("LaunderMoney")
+    end
+    return done
+end
+
+local function doRingFarmCycle()
     if not SD.AutoFarmActive then return end
-
-    local launderPrompt = findPrompt({"launder", "wash money", "money wash", "wash"})
-    local washPos = getPromptPos(launderPrompt)
-
-    if washPos then
-        setStatus("Полет к отмывке...")
-        flyTo(washPos + V3new(0, 3, 0), S.AutoFarmSpeed or 70)
-        task.wait(0.5)
-        setStatus("Отмывка...")
-        firePrompt(launderPrompt)
-        tryFireRemote("Launder")
-        tryFireRemote("Wash")
-        local btn = findButtonInGUI("Launder") or findButtonInGUI("Wash")
-        if btn then clickButton(btn) end
-        task.wait(1)
-    else
-        setStatus("Не найдена отмывка (ищите ближе)")
-        task.wait(2)
+    local marketPos = findNearestArea({"BlackMarket","Black Market","GoodsMarket","Market","Jewelry"})
+    if marketPos then
+        groundMoveTo(marketPos, 300)
+        task.wait(0.3)
     end
-
+    for i = 1, 5 do
+        if not SD.AutoFarmActive then return end
+        buyRings()
+        task.wait(0.5)
+    end
+    if not SD.AutoFarmActive then return end
+    local sellerPos = findNearestArea({"Smuggled Goods Seller","GoodsSeller","Seller","SellGoods"})
+    if sellerPos then
+        groundMoveTo(sellerPos, 300)
+        task.wait(0.3)
+    end
+    sellGoods()
+    task.wait(0.5)
+    if not SD.AutoFarmActive then return end
+    local launderPos = findNearestArea({"Launder","MoneyWash","Money Wash","Wash"})
+    if launderPos then
+        groundMoveTo(launderPos, 300)
+        task.wait(0.3)
+    end
+    launderMoney()
+    task.wait(0.5)
     SD.AutoFarmLaps = SD.AutoFarmLaps + 1
-    setStatus("Круг #" .. SD.AutoFarmLaps)
 end
 
 function SD.startAutoFarm()
     if SD.AutoFarmActive then return end
     SD.AutoFarmActive = true
     SD.AutoFarmLaps = 0
-    setStatus("Запуск...")
     task.spawn(function()
         while SD.AutoFarmActive do
-            pcall(function() doFarmCycle() end)
-            if not SD.AutoFarmActive then break end
-            task.wait(2)
+            pcall(function() doRingFarmCycle() end)
+            task.wait(1)
         end
-        stopCurrentFly()
+        stopMovement()
         setStatus("Остановлено")
     end)
 end
 
 function SD.stopAutoFarm()
     SD.AutoFarmActive = false
-    stopCurrentFly()
+    stopMovement()
     setStatus("Остановлено")
 end
 
 function SD.getPlayerListFiltered(searchText)
     local result = {}
-    searchText = string_lower(searchText or "")
+    searchText = (searchText or ""):lower()
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LP then
-            local ch = p.Character
-            if ch then
-                if searchText == "" or string_find(string_lower(p.Name), searchText) or string_find(string_lower(p.DisplayName), searchText) then
-                    table_insert(result, {
-                        player = p,
-                        name = p.Name,
-                        displayName = p.DisplayName,
-                        role = isPolice(p) and "Police" or "Civilian",
-                        character = ch
-                    })
-                end
+            if searchText == "" or string_find(p.Name:lower(), searchText) or string_find(p.DisplayName:lower(), searchText) then
+                table_insert(result, {
+                    player = p,
+                    name = p.Name,
+                    displayName = p.DisplayName,
+                    role = isPolice(p) and "Police" or "Civilian"
+                })
             end
         end
     end
-    table.sort(result, function(a, b) return string_lower(a.name) < string_lower(b.name) end)
     return result
 end
 
@@ -359,17 +408,11 @@ function SD.teleportToPlayer(playerName)
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Name == playerName or p.DisplayName == playerName then
             local ch = p.Character
-            if ch then
-                local hrp = ch:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    local myCh = LP.Character
-                    if myCh then
-                        local myHrp = myCh:FindFirstChild("HumanoidRootPart")
-                        if myHrp then
-                            myHrp.CFrame = CFnew(hrp.Position + V3new(0, 0, -5))
-                            return true
-                        end
-                    end
+            if ch and ch:FindFirstChild("HumanoidRootPart") then
+                local myCh = LP.Character
+                if myCh and myCh:FindFirstChild("HumanoidRootPart") then
+                    myCh.HumanoidRootPart.CFrame = ch.HumanoidRootPart.CFrame * CFnew(0, 0, 3)
+                    return true
                 end
             end
         end
@@ -391,7 +434,7 @@ end
 function SD.cleanup()
     SD.stopAutoFarm()
     SD.clearPoliceESP()
-    stopCurrentFly()
+    stopMovement()
 end
 
 return SD

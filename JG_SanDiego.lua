@@ -106,7 +106,7 @@ end
 
 local function setStatus(text)
     SD.AutoFarmStatus = text
-    if statusLabel then pcall(function() statusLabel.Text = "Статус: " .. text end) end
+    if statusLabel then pcall(function() statusLabel.Text = text end) end
 end
 
 local function stopCurrentFly()
@@ -121,9 +121,20 @@ local function flyTo(targetPos, speed)
     local ch = LP.Character
     if not ch then return end
     local hrp = ch:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
+    local hum = ch:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
 
-    speed = speed or (S.AutoFarmSpeed or 60)
+    speed = speed or (S.AutoFarmSpeed or 120)
+
+    local fakeFloor = Instance.new("Part")
+    fakeFloor.Name = "JG_FakeFloor"
+    fakeFloor.Size = V3new(6, 0.35, 6)
+    fakeFloor.Transparency = 1
+    fakeFloor.CanCollide = true
+    fakeFloor.Anchored = true
+    fakeFloor.CastShadow = false
+    fakeFloor.Material = Enum.Material.SmoothPlastic
+    fakeFloor.Parent = ws
 
     local bv = Instance.new("BodyVelocity")
     bv.MaxForce = V3new(mathhuge, mathhuge, mathhuge)
@@ -137,22 +148,42 @@ local function flyTo(targetPos, speed)
     bg.Parent = hrp
 
     local alive = true
+    local stateResetTick = 0
+
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
         pcall(function()
-            if ch and ch.Parent then
-                for _, p in pairs(ch:GetDescendants()) do
-                    if p:IsA("BasePart") then p.CanCollide = false end
-                end
+            if not ch or not ch.Parent or not hrp or not hrp.Parent then return end
+            for _, p in pairs(ch:GetDescendants()) do
+                if p:IsA("BasePart") then p.CanCollide = false end
             end
+            fakeFloor.CFrame = CFnew(hrp.Position.X, hrp.Position.Y - 3.5, hrp.Position.Z)
+            fakeFloor.CanCollide = true
+            fakeFloor.Anchored = true
+            stateResetTick = stateResetTick + 1
+            if stateResetTick >= 3 then
+                stateResetTick = 0
+                hum:ChangeState(Enum.HumanoidStateType.Running)
+            end
+        end)
+    end)
+
+    local heartbeatConn = RS.Heartbeat:Connect(function()
+        if not alive then return end
+        pcall(function()
+            if not ch or not ch.Parent or not hrp or not hrp.Parent then return end
+            fakeFloor.CFrame = CFnew(hrp.Position.X, hrp.Position.Y - 3.5, hrp.Position.Z)
+            hum:ChangeState(Enum.HumanoidStateType.Running)
         end)
     end)
 
     currentFlyCleanup = function()
         alive = false
         pcall(function() noclipConn:Disconnect() end)
+        pcall(function() heartbeatConn:Disconnect() end)
         pcall(function() bv:Destroy() end)
         pcall(function() bg:Destroy() end)
+        pcall(function() fakeFloor:Destroy() end)
     end
 
     while alive and SD.AutoFarmActive do
@@ -554,7 +585,7 @@ local function tryClickButton(names, maxAttempts)
             end
         end
         if clickAllMatching(names[1]) then
-            setStatus("Нажал (all): " .. names[1])
+            setStatus("Нажал: " .. names[1])
             return true
         end
         task.wait(0.5)
@@ -567,7 +598,6 @@ local function doTruckerCycle()
 
     setStatus("Дальнобой: ищу NPC...")
     local truckerNames = {"Trucker","TruckDriver","Truck Driver","TruckNPC","Delivery","DeliveryNPC"}
-    local npcFound = false
     for _, name in ipairs(truckerNames) do
         local npc = findNPC(name)
         if npc then
@@ -576,7 +606,6 @@ local function doTruckerCycle()
                 setStatus("Дальнобой: лечу к NPC...")
                 flyTo(pos + V3new(0, 3, 3), S.AutoFarmSpeed or 120)
                 task.wait(0.5)
-                npcFound = true
                 break
             end
         end
@@ -628,11 +657,11 @@ local function doTruckerCycle()
 
     if not SD.AutoFarmActive then return end
     setStatus("Дальнобой: нажимаю Start...")
-    local startClicked = tryClickButton({"Start","Accept","Begin","Go","Начать","start","Confirm"}, 15)
+    local startClicked = tryClickButton({"Start","Accept","Begin","Go","start","Confirm"}, 15)
     if not startClicked then
-        setStatus("Дальнобой: Start не найден, пробую ещё...")
+        setStatus("Дальнобой: Start не найден...")
         task.wait(1)
-        tryClickButton({"Start","Accept","Begin","Go","Начать","start","Confirm","OK","Ok","ok"}, 10)
+        tryClickButton({"Start","Accept","Begin","Go","start","Confirm","OK","Ok","ok"}, 10)
     end
     task.wait(2)
 
@@ -655,7 +684,7 @@ local function doTruckerCycle()
 
         local newPos = findDeliveryWaypoint()
         if newPos and (newPos - deliveryPos).Magnitude > 20 then
-            setStatus("Дальнобой: лечу к обновлённой точке...")
+            setStatus("Дальнобой: обновлённая точка...")
             flyTo(newPos + V3new(0, 5, 0), S.AutoFarmSpeed or 120)
             task.wait(1)
         end
@@ -679,11 +708,11 @@ local function doTruckerCycle()
     end
 
     task.wait(1)
-    tryClickButton({"Collect","Claim","Complete","Finish","Done","Завершить","Получить"}, 8)
+    tryClickButton({"Collect","Claim","Complete","Finish","Done"}, 8)
     task.wait(1)
 
     SD.AutoFarmLaps = SD.AutoFarmLaps + 1
-    setStatus("Круг завершён! (#" .. SD.AutoFarmLaps .. ")")
+    setStatus("Круг #" .. SD.AutoFarmLaps)
 end
 
 function SD.startAutoFarm()

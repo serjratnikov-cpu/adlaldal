@@ -116,6 +116,18 @@ local function stopCurrentFly()
     end
 end
 
+local function getGroundPosition(pos)
+    local ray = RaycastParams.new()
+    ray.FilterType = Enum.RaycastFilterType.Blacklist
+    local ignore = {LP.Character}
+    ray.FilterDescendantsInstances = ignore
+    local hit = ws:Raycast(pos + V3new(0, 10, 0), V3new(0, -25, 0), ray)
+    if hit then
+        return hit.Position.Y
+    end
+    return pos.Y - 3
+end
+
 local function flyTo(targetPos, speed)
     stopCurrentFly()
     local ch = LP.Character
@@ -126,30 +138,23 @@ local function flyTo(targetPos, speed)
 
     speed = speed or (S.AutoFarmSpeed or 120)
 
-    local platform = Instance.new("Part")
-    platform.Name = "JG_Bypass_Platform"
-    platform.Size = V3new(12, 1, 12)
-    platform.Transparency = 1
-    platform.CanCollide = true
-    platform.Anchored = true
-    platform.Parent = ws
-
     local alive = true
-    local groundCheck = 0
+    local touchCount = 0
+    local lastGroundY = nil
     
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
         pcall(function()
             if ch and hrp then
                 for _, part in ipairs(ch:GetDescendants()) do
-                    if part:IsA("BasePart") and part ~= platform then
+                    if part:IsA("BasePart") then
                         part.CanCollide = false
                     end
                 end
-                platform.CFrame = hrp.CFrame * CFnew(0, -3.5, 0)
                 hrp.Velocity = V3new(0, 0, 0)
                 hrp.RotVelocity = V3new(0, 0, 0)
                 hum:ChangeState(Enum.HumanoidStateType.Running)
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
             end
         end)
     end)
@@ -157,7 +162,6 @@ local function flyTo(targetPos, speed)
     currentFlyCleanup = function()
         alive = false
         pcall(function() noclipConn:Disconnect() end)
-        pcall(function() platform:Destroy() end)
     end
 
     while alive and SD.AutoFarmActive do
@@ -166,37 +170,39 @@ local function flyTo(targetPos, speed)
         local dist = (currentPos - targetPos).Magnitude
         if dist < 4 then break end
         
+        local groundY = getGroundPosition(currentPos)
+        lastGroundY = groundY
+        
         local dir = (targetPos - currentPos).Unit
-        local nextStep = currentPos + (dir * (speed * 0.05))
+        local nextPos = currentPos + (dir * (speed * 0.05))
         
-        local ray = RaycastParams.new()
-        ray.FilterType = Enum.RaycastFilterType.Blacklist
-        ray.FilterDescendantsInstances = {ch, platform}
-        local hit = ws:Raycast(currentPos + V3new(0, 5, 0), V3new(0, -10, 0), ray)
+        if nextPos.Y < groundY + 1.5 then
+            nextPos = V3new(nextPos.X, groundY + 2, nextPos.Z)
+        elseif nextPos.Y > groundY + 5 then
+            nextPos = V3new(nextPos.X, groundY + 2.5, nextPos.Z)
+        end
         
-        if hit then
-            local groundY = hit.Position.Y
-            if currentPos.Y > groundY + 3 then
-                nextStep = V3new(nextStep.X, groundY + 2.5, nextStep.Z)
-            elseif currentPos.Y < groundY + 1.5 then
-                nextStep = V3new(nextStep.X, groundY + 2.5, nextStep.Z)
+        touchCount = touchCount + 1
+        if touchCount % 3 == 0 then
+            local checkPos = V3new(nextPos.X, nextPos.Y - 0.5, nextPos.Z)
+            local hit = ws:Raycast(checkPos, V3new(0, -1, 0), RaycastParams.new())
+            if hit then
+                nextPos = V3new(nextPos.X, hit.Position.Y + 2.5, nextPos.Z)
             end
         end
         
-        groundCheck = groundCheck + 1
-        if groundCheck % 20 == 0 then
-            local checkRay = ws:Raycast(currentPos + V3new(0, 10, 0), V3new(0, -30, 0), ray)
-            if checkRay then
-                local gY = checkRay.Position.Y
-                if nextStep.Y < gY + 2 then
-                    nextStep = V3new(nextStep.X, gY + 2.5, nextStep.Z)
-                end
-            end
-            groundCheck = 0
+        if touchCount % 50 == 0 then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            task.wait(0.05)
         end
         
-        hrp.CFrame = CFnew(nextStep, targetPos)
-        task.wait(0.05)
+        if touchCount % 30 == 0 then
+            hrp.CFrame = CFnew(nextPos, targetPos) + V3new(0, 2, 0)
+        else
+            hrp.CFrame = CFnew(nextPos, targetPos)
+        end
+        
+        task.wait(0.04)
     end
 
     stopCurrentFly()

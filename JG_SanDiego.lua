@@ -121,9 +121,18 @@ local function flyTo(targetPos, speed)
     local ch = LP.Character
     if not ch then return end
     local hrp = ch:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
+    local hum = ch:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
 
-    speed = speed or (S.AutoFarmSpeed or 60)
+    speed = speed or (S.AutoFarmSpeed or 120)
+
+    local fakeGround = Instance.new("Part")
+    fakeGround.Name = "JG_PhysicsBypass"
+    fakeGround.Size = V3new(8, 1, 8)
+    fakeGround.Transparency = 1
+    fakeGround.CanCollide = true
+    fakeGround.Anchored = true
+    fakeGround.Parent = ws
 
     local bv = Instance.new("BodyVelocity")
     bv.MaxForce = V3new(mathhuge, mathhuge, mathhuge)
@@ -137,12 +146,19 @@ local function flyTo(targetPos, speed)
     bg.Parent = hrp
 
     local alive = true
+    local lastGroundUpdate = 0
+
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
         pcall(function()
             if ch and ch.Parent then
                 for _, p in pairs(ch:GetDescendants()) do
-                    if p:IsA("BasePart") then p.CanCollide = false end
+                    if p:IsA("BasePart") and p ~= fakeGround then p.CanCollide = false end
+                end
+                fakeGround.CFrame = hrp.CFrame * CFnew(0, -3.2, 0)
+                if tick() - lastGroundUpdate > 0.5 then
+                    lastGroundUpdate = tick()
+                    hum:ChangeState(Enum.HumanoidStateType.Running)
                 end
             end
         end)
@@ -153,22 +169,19 @@ local function flyTo(targetPos, speed)
         pcall(function() noclipConn:Disconnect() end)
         pcall(function() bv:Destroy() end)
         pcall(function() bg:Destroy() end)
+        pcall(function() fakeGround:Destroy() end)
     end
 
     while alive and SD.AutoFarmActive do
         if not ch or not ch.Parent or not hrp or not hrp.Parent then break end
         local dist = (hrp.Position - targetPos).Magnitude
-        if dist < 10 then break end
+        if dist < 8 then break end
         local dir = (targetPos - hrp.Position).Unit
         bv.Velocity = dir * speed
         bg.CFrame = CFnew(hrp.Position, targetPos)
         task.wait()
     end
 
-    if alive then
-        pcall(function() bv.Velocity = V3new(0, 0, 0) end)
-        task.wait(0.3)
-    end
     stopCurrentFly()
 end
 
@@ -410,34 +423,6 @@ local function findDeliveryWaypoint()
     return nil
 end
 
-local function findDeliveryFromGUI()
-    local pg = LP.PlayerGui
-    if not pg then return nil end
-    for _, gui in ipairs(pg:GetDescendants()) do
-        if gui:IsA("TextLabel") and gui.Visible then
-            local txt = gui.Text:lower()
-            if (string_find(txt, "stud") or string_find(txt, "deliver")) then
-                local num = gui.Text:match("(%d+)")
-                if num then
-                    return tonumber(num)
-                end
-            end
-        end
-    end
-    return nil
-end
-
-local function waitForDeliveryPoint(timeout)
-    timeout = timeout or 15
-    local start = tick()
-    while tick() - start < timeout and SD.AutoFarmActive do
-        local pos = findDeliveryWaypoint()
-        if pos then return pos end
-        task.wait(0.5)
-    end
-    return nil
-end
-
 local function buyRings()
     setStatus("Покупка колец...")
     local bought = false
@@ -564,10 +549,8 @@ end
 
 local function doTruckerCycle()
     if not SD.AutoFarmActive then return end
-
     setStatus("Дальнобой: ищу NPC...")
     local truckerNames = {"Trucker","TruckDriver","Truck Driver","TruckNPC","Delivery","DeliveryNPC"}
-    local npcFound = false
     for _, name in ipairs(truckerNames) do
         local npc = findNPC(name)
         if npc then
@@ -576,12 +559,10 @@ local function doTruckerCycle()
                 setStatus("Дальнобой: лечу к NPC...")
                 flyTo(pos + V3new(0, 3, 3), S.AutoFarmSpeed or 120)
                 task.wait(0.5)
-                npcFound = true
                 break
             end
         end
     end
-
     if not SD.AutoFarmActive then return end
     setStatus("Дальнобой: открываю миссии...")
     local missionOpened = false
@@ -594,14 +575,10 @@ local function doTruckerCycle()
         missionOpened = interactPromptNear(pair[1], pair[2])
     end
     task.wait(1)
-    if not missionOpened then
-        tryClickButton({"View Missions","View missions","Missions","ViewMissions"}, 5)
-    end
+    if not missionOpened then tryClickButton({"View Missions","View missions","Missions","ViewMissions"}, 5) end
     task.wait(1)
-
     if not SD.AutoFarmActive then return end
     setStatus("Дальнобой: выбираю грузовик...")
-
     local truckSelected = false
     local truckTiers = {
         {"Gym Equipment","GymEquipment","gym equipment","Gym","Equipment","Tier 3","tier3","Best"},
@@ -625,20 +602,17 @@ local function doTruckerCycle()
         end
     end
     task.wait(1)
-
     if not SD.AutoFarmActive then return end
     setStatus("Дальнобой: нажимаю Start...")
     local startClicked = tryClickButton({"Start","Accept","Begin","Go","Начать","start","Confirm"}, 15)
     if not startClicked then
-        setStatus("Дальнобой: Start не найден, пробую ещё...")
+        setStatus("Дальнобой: Start не найден...")
         task.wait(1)
         tryClickButton({"Start","Accept","Begin","Go","Начать","start","Confirm","OK","Ok","ok"}, 10)
     end
     task.wait(2)
-
     if not SD.AutoFarmActive then return end
     setStatus("Дальнобой: ищу точку доставки...")
-
     local deliveryPos = nil
     for attempt = 1, 20 do
         if not SD.AutoFarmActive then return end
@@ -647,12 +621,10 @@ local function doTruckerCycle()
         task.wait(1)
         setStatus("Дальнобой: жду точку... (" .. attempt .. ")")
     end
-
     if deliveryPos and SD.AutoFarmActive then
         setStatus("Дальнобой: лечу к точке доставки!")
         flyTo(deliveryPos + V3new(0, 5, 0), S.AutoFarmSpeed or 120)
         task.wait(1)
-
         local newPos = findDeliveryWaypoint()
         if newPos and (newPos - deliveryPos).Magnitude > 20 then
             setStatus("Дальнобой: лечу к обновлённой точке...")
@@ -660,10 +632,8 @@ local function doTruckerCycle()
             task.wait(1)
         end
     end
-
     if not SD.AutoFarmActive then return end
     setStatus("Дальнобой: завершаю доставку...")
-
     local deliveryInteracted = false
     local deliveryTargets = {"Delivery","DeliveryPoint","Deliver","DropOff","Drop Off","Destination","Unload"}
     for _, name in ipairs(deliveryTargets) do
@@ -677,11 +647,9 @@ local function doTruckerCycle()
             end
         end
     end
-
     task.wait(1)
     tryClickButton({"Collect","Claim","Complete","Finish","Done","Завершить","Получить"}, 8)
     task.wait(1)
-
     SD.AutoFarmLaps = SD.AutoFarmLaps + 1
     setStatus("Круг завершён! (#" .. SD.AutoFarmLaps .. ")")
 end
@@ -775,4 +743,3 @@ end
 
 return SD
 end
- СДЕЛАЙ ЧТОБЫ ОН БЕЖАЛ А ЕСЛИ ВОЗВЫШЕНОСТЬ ТО ОН ПОДЛЕТАЛ К НЕЙ НУ ТЫ ПОНЯЛ ЖДУ БЕЗ КОМЕНТОЙ ПОЛНЫЙ КОД

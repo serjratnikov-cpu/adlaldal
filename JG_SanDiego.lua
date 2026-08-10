@@ -126,31 +126,29 @@ local function flyTo(targetPos, speed)
 
     speed = speed or (S.AutoFarmSpeed or 120)
 
+    local platform = Instance.new("Part")
+    platform.Name = "JG_Bypass_Platform"
+    platform.Size = V3new(12, 1, 12)
+    platform.Transparency = 1
+    platform.CanCollide = true
+    platform.Anchored = true
+    platform.Parent = ws
+
     local alive = true
-    local oldWalkSpeed = hum.WalkSpeed
-    local oldJumpPower = hum.JumpPower
-    local oldJumpHeight = nil
-    pcall(function() oldJumpHeight = hum.JumpHeight end)
-
-    local rayParams = RaycastParams.new()
-    rayParams.FilterDescendantsInstances = {ch}
-    rayParams.FilterType = Enum.RaycastFilterType.Exclude
-
+    
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
         pcall(function()
-            if ch and ch.Parent then
+            if ch and hrp then
                 for _, part in ipairs(ch:GetDescendants()) do
-                    if part:IsA("BasePart") then
+                    if part:IsA("BasePart") and part ~= platform then
                         part.CanCollide = false
                     end
                 end
+                platform.CFrame = hrp.CFrame * CFnew(0, -3.5, 0)
                 hrp.Velocity = V3new(0, 0, 0)
                 hrp.RotVelocity = V3new(0, 0, 0)
                 hum:ChangeState(Enum.HumanoidStateType.Running)
-                hum.WalkSpeed = 0
-                hum.JumpPower = 0
-                pcall(function() hum.JumpHeight = 0 end)
             end
         end)
     end)
@@ -158,42 +156,19 @@ local function flyTo(targetPos, speed)
     currentFlyCleanup = function()
         alive = false
         pcall(function() noclipConn:Disconnect() end)
-        pcall(function() hum.WalkSpeed = oldWalkSpeed end)
-        pcall(function() hum.JumpPower = oldJumpPower end)
-        pcall(function() if oldJumpHeight then hum.JumpHeight = oldJumpHeight end end)
+        pcall(function() platform:Destroy() end)
     end
-
-    local CHUNK = 35
-    local DELAY = 0.35
 
     while alive and SD.AutoFarmActive do
         if not ch or not ch.Parent or not hrp or not hrp.Parent then break end
         local currentPos = hrp.Position
-        local toTarget = targetPos - currentPos
-        local dist = toTarget.Magnitude
-        if dist < 6 then break end
-
-        local dir = toTarget.Unit
-        local step = math.min(CHUNK, dist)
-        local nextHoriz = currentPos + V3new(dir.X * step, 0, dir.Z * step)
-
-        local groundY = currentPos.Y
-        local ray1 = ws:Raycast(V3new(nextHoriz.X, currentPos.Y + 500, nextHoriz.Z), V3new(0, -1000, 0), rayParams)
-        if ray1 then
-            groundY = ray1.Position.Y + 3.5
-        else
-            local yRatio = step / dist
-            groundY = currentPos.Y + (toTarget.Y * yRatio)
-        end
-
-        local finalPos = V3new(nextHoriz.X, groundY, nextHoriz.Z)
-        local lookAt = V3new(targetPos.X, groundY, targetPos.Z)
-        hrp.CFrame = CFnew(finalPos, lookAt)
-        hrp.Velocity = V3new(0, 0, 0)
-        hrp.RotVelocity = V3new(0, 0, 0)
-        hum:ChangeState(Enum.HumanoidStateType.Running)
-
-        task.wait(DELAY)
+        local dist = (currentPos - targetPos).Magnitude
+        if dist < 4 then break end
+        
+        local dir = (targetPos - currentPos).Unit
+        local nextStep = currentPos + (dir * (speed * task.wait()))
+        
+        hrp.CFrame = CFnew(nextStep, targetPos)
     end
 
     stopCurrentFly()

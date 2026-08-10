@@ -1,4 +1,3 @@
-```lua
 return function(S, LP, Players, ws, RS, Camera, Color3RGB, V3new, CFnew, mathhuge, pcall, task, table_insert, string_find, string_lower, tostring, mathfloor)
 
 local SD = {}
@@ -13,7 +12,6 @@ SD.AimPolice = false
 local policeHighlights = {}
 local statusLabel = nil
 local currentFlyCleanup = nil
-local isFlying = false
 
 local TEAM_NAMES_POLICE = {
     "police","border patrol","fbi","swat","bortac","army",
@@ -116,7 +114,40 @@ local function stopCurrentFly()
         pcall(function() currentFlyCleanup() end)
         currentFlyCleanup = nil
     end
-    isFlying = false
+end
+
+local function findGroundY(pos, ch)
+    local rp = RaycastParams.new()
+    rp.FilterDescendantsInstances = {ch}
+    rp.FilterType = Enum.RaycastFilterType.Exclude
+    local hit = ws:Raycast(pos + V3new(0, 500, 0), V3new(0, -2000, 0), rp)
+    if hit then return hit.Position.Y end
+    return nil
+end
+
+local function landPause(hrp, hum, ch)
+    if not hrp or not hrp.Parent then return end
+
+    local gY = findGroundY(hrp.Position, ch)
+    if gY then
+        hrp.CFrame = CFnew(hrp.Position.X, gY + 3, hrp.Position.Z)
+    end
+
+    for _, p in ipairs(ch:GetDescendants()) do
+        if p:IsA("BasePart") then p.CanCollide = true end
+    end
+    hrp.Velocity = V3new(0, 0, 0)
+    hrp.RotVelocity = V3new(0, 0, 0)
+    hum:ChangeState(Enum.HumanoidStateType.Running)
+
+    local t = tick()
+    while tick() - t < 0.6 do
+        if not SD.AutoFarmActive then break end
+        hrp.Velocity = V3new(0, 0, 0)
+        hrp.RotVelocity = V3new(0, 0, 0)
+        hum:ChangeState(Enum.HumanoidStateType.Running)
+        task.wait()
+    end
 end
 
 local function flyTo(targetPos, speed)
@@ -130,89 +161,80 @@ local function flyTo(targetPos, speed)
     speed = speed or (S.AutoFarmSpeed or 120)
 
     local alive = true
-    local stepCount = 0
-    local flyTime = 0
-    local isGrounded = false
-    local wasFlying = false
-    
-    local noclipConn = RS.Stepped:Connect(function()
-        if not alive then return end
-        pcall(function()
-            if ch and hrp then
-                for _, part in ipairs(ch:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
+    local flying = true
+    local noclipConn = nil
+
+    local function startNoclip()
+        if noclipConn then pcall(function() noclipConn:Disconnect() end) end
+        noclipConn = RS.Stepped:Connect(function()
+            if not alive or not flying then return end
+            pcall(function()
+                if ch and ch.Parent then
+                    for _, p in ipairs(ch:GetDescendants()) do
+                        if p:IsA("BasePart") then p.CanCollide = false end
                     end
+                    hrp.Velocity = V3new(0, 0, 0)
+                    hrp.RotVelocity = V3new(0, 0, 0)
+                    hum:ChangeState(Enum.HumanoidStateType.Running)
                 end
-                hrp.Velocity = V3new(0, 0, 0)
-                hrp.RotVelocity = V3new(0, 0, 0)
-                hum:ChangeState(Enum.HumanoidStateType.Running)
-            end
+            end)
         end)
-    end)
+    end
+
+    local function stopNoclip()
+        if noclipConn then
+            pcall(function() noclipConn:Disconnect() end)
+            noclipConn = nil
+        end
+    end
 
     currentFlyCleanup = function()
         alive = false
-        pcall(function() noclipConn:Disconnect() end)
-        pcall(function()
-            if hum then
-                hum:ChangeState(Enum.HumanoidStateType.Landed)
-            end
-        end)
+        flying = false
+        stopNoclip()
     end
+
+    local FLY_DURATION = 3.5
+    local PAUSE_DURATION = 0.6
 
     while alive and SD.AutoFarmActive do
         if not ch or not ch.Parent or not hrp or not hrp.Parent then break end
-        local currentPos = hrp.Position
-        local dist = (currentPos - targetPos).Magnitude
-        if dist < 4 then break end
-        
-        local dir = (targetPos - currentPos).Unit
-        local nextPos = currentPos + (dir * (speed * 0.04))
-        
-        stepCount = stepCount + 1
-        flyTime = flyTime + 0.04
-        
-        local ray = RaycastParams.new()
-        ray.FilterType = Enum.RaycastFilterType.Blacklist
-        ray.FilterDescendantsInstances = {ch}
-        local hit = ws:Raycast(nextPos + V3new(0, 3, 0), V3new(0, -6, 0), ray)
-        
-        if hit then
-            isGrounded = true
-            nextPos = V3new(nextPos.X, hit.Position.Y + 2.5, nextPos.Z)
-        else
-            isGrounded = false
-        end
-        
-        if flyTime >= 3.8 and not isGrounded then
-            hum:ChangeState(Enum.HumanoidStateType.Landed)
-            task.wait(0.15)
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
-            flyTime = 0
-            wasFlying = true
-        end
-        
-        if wasFlying and flyTime < 0.5 then
-            nextPos = V3new(nextPos.X, nextPos.Y - 0.5, nextPos.Z)
-        end
-        
-        if stepCount % 3 == 0 then
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
-        end
-        
-        if stepCount % 5 == 0 and not hit then
-            local checkRay = ws:Raycast(nextPos + V3new(0, 8, 0), V3new(0, -12, 0), ray)
-            if checkRay then
-                nextPos = V3new(nextPos.X, checkRay.Position.Y + 2.5, nextPos.Z)
-                isGrounded = true
+        if (hrp.Position - targetPos).Magnitude < 6 then break end
+
+        flying = true
+        startNoclip()
+
+        local flyStart = tick()
+        while alive and SD.AutoFarmActive and flying do
+            if not ch.Parent or not hrp.Parent then break end
+            if (hrp.Position - targetPos).Magnitude < 6 then break end
+            if tick() - flyStart >= FLY_DURATION then break end
+
+            local cur = hrp.Position
+            local dir = (targetPos - cur).Unit
+            local dt = task.wait()
+            local next = cur + dir * speed * dt
+
+            local gY = findGroundY(next, ch)
+            if gY then
+                next = V3new(next.X, gY + 3, next.Z)
             end
+
+            hrp.CFrame = CFnew(next, V3new(targetPos.X, next.Y, targetPos.Z))
+            hrp.Velocity = V3new(0, 0, 0)
+            hrp.RotVelocity = V3new(0, 0, 0)
         end
-        
-        hrp.CFrame = CFnew(nextPos, targetPos)
-        task.wait(0.04)
+
+        stopNoclip()
+        flying = false
+
+        if not alive or not SD.AutoFarmActive then break end
+        if (hrp.Position - targetPos).Magnitude < 6 then break end
+
+        landPause(hrp, hum, ch)
     end
 
+    stopNoclip()
     stopCurrentFly()
 end
 
@@ -281,21 +303,13 @@ local function clickButton(btn)
     if not btn then return false end
     local ok = false
     pcall(function()
-        if firesignal then
-            firesignal(btn.MouseButton1Click)
-            ok = true
-        end
+        if firesignal then firesignal(btn.MouseButton1Click) ok = true end
     end)
     pcall(function()
-        if firesignal then
-            firesignal(btn.Activated)
-        end
+        if firesignal then firesignal(btn.Activated) end
     end)
     if not ok then
-        pcall(function()
-            btn.MouseButton1Click:Fire()
-            ok = true
-        end)
+        pcall(function() btn.MouseButton1Click:Fire() ok = true end)
     end
     return ok
 end
@@ -313,10 +327,7 @@ local function clickAllMatching(buttonName)
                 local match = false
                 if gui.Name and string_find(gui.Name:lower(), bLow) then match = true end
                 if gui:IsA("TextButton") and gui.Text and string_find(gui.Text:lower(), bLow) then match = true end
-                if match then
-                    clickButton(gui)
-                    found = true
-                end
+                if match then clickButton(gui) found = true end
             end
         end
     end

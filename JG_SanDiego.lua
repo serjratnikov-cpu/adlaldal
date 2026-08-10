@@ -121,21 +121,17 @@ local function flyTo(targetPos, speed)
     local ch = LP.Character
     if not ch then return end
     local hrp = ch:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    speed = speed or (S.AutoFarmSpeed or 60)
     local hum = ch:FindFirstChildOfClass("Humanoid")
-    if not hrp or not hum then return end
+    if not hum then return end
 
-    speed = speed or (S.AutoFarmSpeed or 120)
-
-    local fakeGround = Instance.new("Part")
-    fakeGround.Name = "JG_PhysicsBypass"
-    fakeGround.Size = V3new(8, 1, 8)
-    fakeGround.Transparency = 1
-    fakeGround.CanCollide = true
-    fakeGround.Anchored = true
-    fakeGround.Parent = ws
+    local originalGravity = workspace.Gravity
+    workspace.Gravity = 0
 
     local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = V3new(mathhuge, mathhuge, mathhuge)
+    bv.MaxForce = V3new(9e8, 9e8, 9e8)
     bv.Velocity = V3new(0, 0, 0)
     bv.Parent = hrp
 
@@ -146,19 +142,25 @@ local function flyTo(targetPos, speed)
     bg.Parent = hrp
 
     local alive = true
-    local lastGroundUpdate = 0
+    local stepCount = 0
+    local lastPos = hrp.Position
+    local stuckCount = 0
+
+    local function getGroundY(pos)
+        local ray = RaycastParams.new()
+        ray.FilterType = Enum.RaycastFilterType.Blacklist
+        ray.FilterDescendantsInstances = {ch, workspace.Terrain}
+        local hit = workspace:Raycast(V3new(pos.X, pos.Y + 100, pos.Z), V3new(0, -250, 0), ray)
+        if hit then return hit.Position.Y end
+        return pos.Y - 100
+    end
 
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
         pcall(function()
             if ch and ch.Parent then
                 for _, p in pairs(ch:GetDescendants()) do
-                    if p:IsA("BasePart") and p ~= fakeGround then p.CanCollide = false end
-                end
-                fakeGround.CFrame = hrp.CFrame * CFnew(0, -3.2, 0)
-                if tick() - lastGroundUpdate > 0.5 then
-                    lastGroundUpdate = tick()
-                    hum:ChangeState(Enum.HumanoidStateType.Running)
+                    if p:IsA("BasePart") then p.CanCollide = false end
                 end
             end
         end)
@@ -169,19 +171,72 @@ local function flyTo(targetPos, speed)
         pcall(function() noclipConn:Disconnect() end)
         pcall(function() bv:Destroy() end)
         pcall(function() bg:Destroy() end)
-        pcall(function() fakeGround:Destroy() end)
+        pcall(function() workspace.Gravity = originalGravity end)
     end
 
     while alive and SD.AutoFarmActive do
         if not ch or not ch.Parent or not hrp or not hrp.Parent then break end
-        local dist = (hrp.Position - targetPos).Magnitude
+        
+        local currentPos = hrp.Position
+        local dist = (currentPos - targetPos).Magnitude
         if dist < 8 then break end
-        local dir = (targetPos - hrp.Position).Unit
+
+        if (currentPos - lastPos).Magnitude < 0.3 then
+            stuckCount = stuckCount + 1
+            if stuckCount > 15 then
+                bv.Velocity = V3new(0, 40, 0)
+                task.wait(0.05)
+                stuckCount = 0
+            end
+        else
+            stuckCount = 0
+        end
+        lastPos = currentPos
+
+        local groundY = getGroundY(currentPos)
+        local height = currentPos.Y - groundY
+
+        if height > 30 then
+            targetPos = V3new(targetPos.X, groundY + 20, targetPos.Z)
+        end
+
+        if height < 3 and dist > 15 then
+            targetPos = V3new(targetPos.X, targetPos.Y + 8, targetPos.Z)
+        end
+
+        local dir = (targetPos - currentPos).Unit
         bv.Velocity = dir * speed
-        bg.CFrame = CFnew(hrp.Position, targetPos)
+        bg.CFrame = CFnew(currentPos, targetPos)
+
+        stepCount = stepCount + 1
+
+        if stepCount % 6 == 0 then
+            bv.Velocity = V3new(bv.Velocity.X, -12, bv.Velocity.Z)
+            task.wait(0.02)
+        end
+
+        if stepCount % 10 == 0 then
+            bv.Velocity = V3new(bv.Velocity.X, 6, bv.Velocity.Z)
+            task.wait(0.02)
+        end
+
+        if stepCount % 45 == 0 then
+            workspace.Gravity = 0
+            hum.Sit = false
+            hum.PlatformStand = true
+        end
+
         task.wait()
     end
 
+    if alive then
+        pcall(function()
+            bv.Velocity = V3new(0, -8, 0)
+            task.wait(0.15)
+            bv.Velocity = V3new(0, 0, 0)
+        end)
+        task.wait(0.2)
+    end
     stopCurrentFly()
 end
 

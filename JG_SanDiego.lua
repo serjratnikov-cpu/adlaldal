@@ -126,40 +126,29 @@ local function flyTo(targetPos, speed)
 
     speed = speed or (S.AutoFarmSpeed or 120)
 
-    local fakeGround = Instance.new("Part")
-    fakeGround.Name = "JG_PhysicsBypass"
-    fakeGround.Size = V3new(8, 1, 8)
-    fakeGround.Transparency = 1
-    fakeGround.CanCollide = true
-    fakeGround.Anchored = true
-    fakeGround.Parent = ws
-
-    local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = V3new(mathhuge, mathhuge, mathhuge)
-    bv.Velocity = V3new(0, 0, 0)
-    bv.Parent = hrp
-
-    local bg = Instance.new("BodyGyro")
-    bg.MaxTorque = V3new(mathhuge, mathhuge, mathhuge)
-    bg.P = 9e4
-    bg.CFrame = hrp.CFrame
-    bg.Parent = hrp
+    local platform = Instance.new("Part")
+    platform.Name = "JG_Bypass_Platform"
+    platform.Size = V3new(12, 1, 12)
+    platform.Transparency = 1
+    platform.CanCollide = true
+    platform.Anchored = true
+    platform.Parent = ws
 
     local alive = true
-    local lastGroundUpdate = 0
-
+    
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
         pcall(function()
-            if ch and ch.Parent and hrp and hrp.Parent then
-                for _, p in pairs(ch:GetDescendants()) do
-                    if p:IsA("BasePart") and p ~= fakeGround then p.CanCollide = false end
+            if ch and hrp then
+                for _, part in ipairs(ch:GetDescendants()) do
+                    if part:IsA("BasePart") and part ~= platform then
+                        part.CanCollide = false
+                    end
                 end
-                fakeGround.CFrame = hrp.CFrame * CFnew(0, -3.2, 0)
-                if tick() - lastGroundUpdate > 0.5 then
-                    lastGroundUpdate = tick()
-                    hum:ChangeState(Enum.HumanoidStateType.Running)
-                end
+                platform.CFrame = hrp.CFrame * CFnew(0, -3.5, 0)
+                hrp.Velocity = V3new(0, 0, 0)
+                hrp.RotVelocity = V3new(0, 0, 0)
+                hum:ChangeState(Enum.HumanoidStateType.Running)
             end
         end)
     end)
@@ -167,19 +156,19 @@ local function flyTo(targetPos, speed)
     currentFlyCleanup = function()
         alive = false
         pcall(function() noclipConn:Disconnect() end)
-        pcall(function() bv:Destroy() end)
-        pcall(function() bg:Destroy() end)
-        pcall(function() fakeGround:Destroy() end)
+        pcall(function() platform:Destroy() end)
     end
 
     while alive and SD.AutoFarmActive do
         if not ch or not ch.Parent or not hrp or not hrp.Parent then break end
-        local dist = (hrp.Position - targetPos).Magnitude
-        if dist < 8 then break end
-        local dir = (targetPos - hrp.Position).Unit
-        bv.Velocity = dir * speed
-        bg.CFrame = CFnew(hrp.Position, targetPos)
-        task.wait()
+        local currentPos = hrp.Position
+        local dist = (currentPos - targetPos).Magnitude
+        if dist < 4 then break end
+        
+        local dir = (targetPos - currentPos).Unit
+        local nextStep = currentPos + (dir * (speed * task.wait()))
+        
+        hrp.CFrame = CFnew(nextStep, targetPos)
     end
 
     stopCurrentFly()

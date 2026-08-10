@@ -11,7 +11,7 @@ SD.AimPolice = false
 
 local policeHighlights = {}
 local statusLabel = nil
-local currentMoveCleanup = nil
+local currentFlyCleanup = nil
 
 local TEAM_NAMES_POLICE = {
     "police","border patrol","fbi","swat","bortac","army",
@@ -106,153 +106,70 @@ end
 
 local function setStatus(text)
     SD.AutoFarmStatus = text
-    if statusLabel then pcall(function() statusLabel.Text = text end) end
+    if statusLabel then pcall(function() statusLabel.Text = "Статус: " .. text end) end
 end
 
-local function stopCurrentMove()
-    if currentMoveCleanup then
-        pcall(function() currentMoveCleanup() end)
-        currentMoveCleanup = nil
+local function stopCurrentFly()
+    if currentFlyCleanup then
+        pcall(function() currentFlyCleanup() end)
+        currentFlyCleanup = nil
     end
 end
 
-local function rayDown(pos, maxDist)
-    maxDist = maxDist or 500
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    local ch = LP.Character
-    if ch then params.FilterDescendantsInstances = {ch} end
-    local result = ws:Raycast(pos, V3new(0, -maxDist, 0), params)
-    if result then return result.Position end
-    return nil
-end
-
-local function rayForward(pos, dir, dist)
-    dist = dist or 8
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    local ch = LP.Character
-    if ch then params.FilterDescendantsInstances = {ch} end
-    local result = ws:Raycast(pos, dir * dist, params)
-    if result then return result end
-    return nil
-end
-
-local function groundMoveTo(targetPos, speed)
-    stopCurrentMove()
+local function flyTo(targetPos, speed)
+    stopCurrentFly()
     local ch = LP.Character
     if not ch then return end
     local hrp = ch:FindFirstChild("HumanoidRootPart")
-    local hum = ch:FindFirstChildOfClass("Humanoid")
-    if not hrp or not hum then return end
+    if not hrp then return end
 
-    speed = speed or (S.AutoFarmSpeed or 80)
+    speed = speed or (S.AutoFarmSpeed or 60)
+
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = V3new(mathhuge, mathhuge, mathhuge)
+    bv.Velocity = V3new(0, 0, 0)
+    bv.Parent = hrp
+
+    local bg = Instance.new("BodyGyro")
+    bg.MaxTorque = V3new(mathhuge, mathhuge, mathhuge)
+    bg.P = 9e4
+    bg.CFrame = hrp.CFrame
+    bg.Parent = hrp
+
     local alive = true
-    local stuckCount = 0
-    local lastPos = hrp.Position
-    local MAX_CLIMB = 6
-
-    local moveConn = RS.Heartbeat:Connect(function(dt)
+    local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
-        if not ch or not ch.Parent or not hrp or not hrp.Parent then alive = false return end
-
-        local myPos = hrp.Position
-        local flatDist = (V3new(myPos.X, 0, myPos.Z) - V3new(targetPos.X, 0, targetPos.Z)).Magnitude
-
-        if flatDist < 6 then
-            local vertDist = math.abs(myPos.Y - targetPos.Y)
-            if vertDist < 15 then alive = false return end
-        end
-
-        local flatTarget = V3new(targetPos.X, myPos.Y, targetPos.Z)
-        local moveDir = (flatTarget - myPos)
-        if moveDir.Magnitude > 0 then moveDir = moveDir.Unit end
-
-        local stepDist = speed * dt
-        local newFlatPos = myPos + moveDir * stepDist
-
-        local needJump = false
-        local jumpHeight = 0
-
-        local feetCheck = rayForward(myPos + V3new(0, -2, 0), moveDir, 4)
-        local kneeCheck = rayForward(myPos + V3new(0, 0, 0), moveDir, 4)
-        local headCheck = rayForward(myPos + V3new(0, 3, 0), moveDir, 4)
-
-        if kneeCheck and not headCheck then
-            local obstacleTop = kneeCheck.Position.Y
-            local climbNeeded = obstacleTop - (myPos.Y - 3)
-            if climbNeeded > 0 and climbNeeded < MAX_CLIMB then
-                needJump = true
-                jumpHeight = obstacleTop + 4
+        pcall(function()
+            if ch and ch.Parent then
+                for _, p in pairs(ch:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide = false end
+                end
             end
-        elseif feetCheck and not kneeCheck then
-            local stepH = feetCheck.Position.Y - (myPos.Y - 3)
-            if stepH > 0 and stepH < 3 then
-                needJump = true
-                jumpHeight = feetCheck.Position.Y + 4
-            end
-        end
-
-        if headCheck and kneeCheck then
-            local params2 = RaycastParams.new()
-            params2.FilterType = Enum.RaycastFilterType.Exclude
-            if ch then params2.FilterDescendantsInstances = {ch} end
-            local sideDir1 = V3new(-moveDir.Z, 0, moveDir.X)
-            local sideHit = ws:Raycast(myPos, sideDir1 * 10, params2)
-            if not sideHit then
-                newFlatPos = myPos + sideDir1 * stepDist
-            else
-                newFlatPos = myPos + V3new(moveDir.Z, 0, -moveDir.X) * stepDist
-            end
-            needJump = false
-        end
-
-        local groundPos = rayDown(V3new(newFlatPos.X, myPos.Y + 10, newFlatPos.Z), 50)
-        local finalY = myPos.Y
-
-        if needJump and jumpHeight > 0 then
-            finalY = finalY + (jumpHeight - finalY) * math.min(dt * 10, 1)
-        elseif groundPos then
-            local groundY = groundPos.Y + 3.5
-            local diff = groundY - finalY
-            if diff > 0 and diff < MAX_CLIMB then
-                finalY = finalY + diff * math.min(dt * 12, 1)
-            elseif diff <= 0 then
-                finalY = finalY + diff * math.min(dt * 15, 1)
-            end
-        end
-
-        hrp.CFrame = CFnew(newFlatPos.X, finalY, newFlatPos.Z) * (hrp.CFrame - hrp.CFrame.Position)
-        hrp.AssemblyLinearVelocity = V3new(0, 0, 0)
-        hum:ChangeState(Enum.HumanoidStateType.Running)
-
-        if (myPos - lastPos).Magnitude < 0.3 then
-            stuckCount = stuckCount + 1
-            if stuckCount > 90 then
-                local sideDir = V3new(-moveDir.Z, 0, moveDir.X)
-                local sidePos = myPos + sideDir * 8
-                hrp.CFrame = CFnew(sidePos) * (hrp.CFrame - hrp.CFrame.Position)
-                stuckCount = 0
-            end
-        else
-            stuckCount = 0
-        end
-        lastPos = myPos
+        end)
     end)
 
-    currentMoveCleanup = function()
+    currentFlyCleanup = function()
         alive = false
-        pcall(function() moveConn:Disconnect() end)
+        pcall(function() noclipConn:Disconnect() end)
+        pcall(function() bv:Destroy() end)
+        pcall(function() bg:Destroy() end)
     end
 
     while alive and SD.AutoFarmActive do
         if not ch or not ch.Parent or not hrp or not hrp.Parent then break end
-        local totalDist = (hrp.Position - targetPos).Magnitude
-        if totalDist < 6 then break end
+        local dist = (hrp.Position - targetPos).Magnitude
+        if dist < 10 then break end
+        local dir = (targetPos - hrp.Position).Unit
+        bv.Velocity = dir * speed
+        bg.CFrame = CFnew(hrp.Position, targetPos)
         task.wait()
     end
 
-    stopCurrentMove()
+    if alive then
+        pcall(function() bv.Velocity = V3new(0, 0, 0) end)
+        task.wait(0.3)
+    end
+    stopCurrentFly()
 end
 
 local function fireProximityPrompt(prompt)
@@ -421,9 +338,9 @@ local function interactPromptNear(name, actionText)
                 local pp = findProximityPrompt(part, actionText) or findProximityPrompt(part.Parent, actionText)
                 if pp then
                     local pos = part.Position
-                    if (hrp.Position - pos).Magnitude > 5 then
-                        groundMoveTo(pos + V3new(0, 0, 0), S.AutoFarmSpeed or 80)
-                        task.wait(0.3)
+                    if (hrp.Position - pos).Magnitude > 12 then
+                        flyTo(pos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
+                        task.wait(0.5)
                     end
                     fireProximityPrompt(pp)
                     return true
@@ -435,9 +352,9 @@ local function interactPromptNear(name, actionText)
         local pp = findProximityPrompt(target, actionText)
         if pp then
             local pos = getPartPosition(target)
-            if pos and (hrp.Position - pos).Magnitude > 5 then
-                groundMoveTo(pos + V3new(0, 0, 2), S.AutoFarmSpeed or 80)
-                task.wait(0.3)
+            if pos and (hrp.Position - pos).Magnitude > 12 then
+                flyTo(pos + V3new(0, 3, 3), S.AutoFarmSpeed or 120)
+                task.wait(0.5)
             end
             fireProximityPrompt(pp)
             return true
@@ -510,6 +427,17 @@ local function findDeliveryFromGUI()
     return nil
 end
 
+local function waitForDeliveryPoint(timeout)
+    timeout = timeout or 15
+    local start = tick()
+    while tick() - start < timeout and SD.AutoFarmActive do
+        local pos = findDeliveryWaypoint()
+        if pos then return pos end
+        task.wait(0.5)
+    end
+    return nil
+end
+
 local function buyRings()
     setStatus("Покупка колец...")
     local bought = false
@@ -578,36 +506,36 @@ end
 
 local function doRingFarmCycle()
     if not SD.AutoFarmActive then return end
-    setStatus("Кольца: бегу к магазину...")
+    setStatus("Кольца: лечу к магазину...")
     local marketPos = findAreaPosition({"BlackMarket","Black Market","GoodsMarket","Market","Shop","Jewelry","JewelryShop"})
     if marketPos then
-        groundMoveTo(marketPos, S.AutoFarmSpeed or 80)
-        task.wait(0.3)
-    end
-    for i = 1, 3 do
-        if not SD.AutoFarmActive then return end
-        setStatus("Кольца: покупка " .. i .. "/3")
-        buyRings()
+        flyTo(marketPos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
         task.wait(0.5)
     end
+    for i = 1, 5 do
+        if not SD.AutoFarmActive then return end
+        setStatus("Кольца: покупка " .. i .. "/5")
+        buyRings()
+        task.wait(0.6)
+    end
     if not SD.AutoFarmActive then return end
-    setStatus("Кольца: бегу к продавцу...")
+    setStatus("Кольца: лечу к продавцу...")
     local sellerPos = findAreaPosition({"Smuggled Goods Seller","GoodsSeller","Seller","SellGoods","SmuggledGoods"})
     if sellerPos then
-        groundMoveTo(sellerPos, S.AutoFarmSpeed or 80)
-        task.wait(0.3)
+        flyTo(sellerPos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
+        task.wait(0.5)
     end
     sellGoods()
-    task.wait(0.5)
+    task.wait(0.8)
     if not SD.AutoFarmActive then return end
-    setStatus("Кольца: бегу отмывать...")
+    setStatus("Кольца: лечу отмывать...")
     local launderPos = findAreaPosition({"Launder","MoneyWash","Money Wash","Wash","Laundering"})
     if launderPos then
-        groundMoveTo(launderPos, S.AutoFarmSpeed or 80)
-        task.wait(0.3)
+        flyTo(launderPos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
+        task.wait(0.5)
     end
     launderMoney()
-    task.wait(0.5)
+    task.wait(0.8)
     SD.AutoFarmLaps = SD.AutoFarmLaps + 1
 end
 
@@ -626,7 +554,7 @@ local function tryClickButton(names, maxAttempts)
             end
         end
         if clickAllMatching(names[1]) then
-            setStatus("Нажал: " .. names[1])
+            setStatus("Нажал (all): " .. names[1])
             return true
         end
         task.wait(0.5)
@@ -639,14 +567,16 @@ local function doTruckerCycle()
 
     setStatus("Дальнобой: ищу NPC...")
     local truckerNames = {"Trucker","TruckDriver","Truck Driver","TruckNPC","Delivery","DeliveryNPC"}
+    local npcFound = false
     for _, name in ipairs(truckerNames) do
         local npc = findNPC(name)
         if npc then
             local pos = getPartPosition(npc)
             if pos then
-                setStatus("Дальнобой: бегу к NPC...")
-                groundMoveTo(pos + V3new(0, 0, 2), S.AutoFarmSpeed or 80)
-                task.wait(0.3)
+                setStatus("Дальнобой: лечу к NPC...")
+                flyTo(pos + V3new(0, 3, 3), S.AutoFarmSpeed or 120)
+                task.wait(0.5)
+                npcFound = true
                 break
             end
         end
@@ -688,7 +618,7 @@ local function doTruckerCycle()
                 clickButton(btn)
                 task.wait(0.3)
                 clickButton(btn)
-                setStatus("Грузовик: " .. bName)
+                setStatus("Выбран грузовик: " .. bName)
                 truckSelected = true
                 break
             end
@@ -698,10 +628,11 @@ local function doTruckerCycle()
 
     if not SD.AutoFarmActive then return end
     setStatus("Дальнобой: нажимаю Start...")
-    local startClicked = tryClickButton({"Start","Accept","Begin","Go","start","Confirm"}, 15)
+    local startClicked = tryClickButton({"Start","Accept","Begin","Go","Начать","start","Confirm"}, 15)
     if not startClicked then
+        setStatus("Дальнобой: Start не найден, пробую ещё...")
         task.wait(1)
-        tryClickButton({"Start","Accept","Begin","Go","start","Confirm","OK","Ok","ok"}, 10)
+        tryClickButton({"Start","Accept","Begin","Go","Начать","start","Confirm","OK","Ok","ok"}, 10)
     end
     task.wait(2)
 
@@ -718,14 +649,14 @@ local function doTruckerCycle()
     end
 
     if deliveryPos and SD.AutoFarmActive then
-        setStatus("Дальнобой: бегу к точке!")
-        groundMoveTo(deliveryPos, S.AutoFarmSpeed or 80)
+        setStatus("Дальнобой: лечу к точке доставки!")
+        flyTo(deliveryPos + V3new(0, 5, 0), S.AutoFarmSpeed or 120)
         task.wait(1)
 
         local newPos = findDeliveryWaypoint()
         if newPos and (newPos - deliveryPos).Magnitude > 20 then
-            setStatus("Дальнобой: обновлённая точка...")
-            groundMoveTo(newPos, S.AutoFarmSpeed or 80)
+            setStatus("Дальнобой: лечу к обновлённой точке...")
+            flyTo(newPos + V3new(0, 5, 0), S.AutoFarmSpeed or 120)
             task.wait(1)
         end
     end
@@ -748,11 +679,11 @@ local function doTruckerCycle()
     end
 
     task.wait(1)
-    tryClickButton({"Collect","Claim","Complete","Finish","Done"}, 8)
+    tryClickButton({"Collect","Claim","Complete","Finish","Done","Завершить","Получить"}, 8)
     task.wait(1)
 
     SD.AutoFarmLaps = SD.AutoFarmLaps + 1
-    setStatus("Круг #" .. SD.AutoFarmLaps)
+    setStatus("Круг завершён! (#" .. SD.AutoFarmLaps .. ")")
 end
 
 function SD.startAutoFarm()
@@ -769,14 +700,14 @@ function SD.startAutoFarm()
             if not SD.AutoFarmActive then break end
             task.wait(2)
         end
-        stopCurrentMove()
+        stopCurrentFly()
         setStatus("Остановлено")
     end)
 end
 
 function SD.stopAutoFarm()
     SD.AutoFarmActive = false
-    stopCurrentMove()
+    stopCurrentFly()
     setStatus("Остановлено")
 end
 
@@ -814,7 +745,7 @@ function SD.teleportToPlayer(playerName)
                     if myCh then
                         local myHrp = myCh:FindFirstChild("HumanoidRootPart")
                         if myHrp then
-                            myHrp.CFrame = CFnew(hrp.Position + V3new(0, 0, -3))
+                            myHrp.CFrame = CFnew(hrp.Position + V3new(0, 0, -5))
                             return true
                         end
                     end
@@ -839,7 +770,7 @@ end
 function SD.cleanup()
     SD.stopAutoFarm()
     SD.clearPoliceESP()
-    stopCurrentMove()
+    stopCurrentFly()
 end
 
 return SD

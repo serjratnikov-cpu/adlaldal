@@ -12,7 +12,6 @@ SD.AimPolice = false
 local policeHighlights = {}
 local statusLabel = nil
 local currentFlyCleanup = nil
-local currentVehicle = nil
 
 local TEAM_NAMES_POLICE = {
     "police","border patrol","fbi","swat","bortac","army",
@@ -117,85 +116,6 @@ local function stopCurrentFly()
     end
 end
 
-local function getVehicle()
-    local ch = LP.Character
-    if not ch then return nil end
-    local hrp = ch:FindFirstChild("HumanoidRootPart")
-    if not hrp then return nil end
-    local vehicle = hrp:FindFirstAncestorOfClass("VehicleSeat")
-    if vehicle then
-        local parent = vehicle.Parent
-        if parent and parent:IsA("Model") then
-            return parent
-        end
-        return vehicle
-    end
-    for _, child in ipairs(ws:GetChildren()) do
-        if child:IsA("Model") and child:FindFirstChild("HumanoidRootPart") then
-            local checkHrp = child:FindFirstChild("HumanoidRootPart")
-            if checkHrp and checkHrp:FindFirstChildOfClass("VehicleSeat") then
-                local seat = checkHrp:FindFirstChildOfClass("VehicleSeat")
-                if seat and seat.Occupant == hrp then
-                    return child
-                end
-            end
-        end
-    end
-    return nil
-end
-
-local function exitVehicle()
-    local ch = LP.Character
-    if not ch then return end
-    local hrp = ch:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    local seat = hrp:FindFirstAncestorOfClass("VehicleSeat")
-    if seat then
-        pcall(function()
-            seat.Occupant = nil
-        end)
-        pcall(function()
-            fireproximityprompt(seat:FindFirstChildOfClass("ProximityPrompt"))
-        end)
-        return true
-    end
-    return false
-end
-
-local function enterVehicle(vehicle)
-    if not vehicle then return false end
-    local ch = LP.Character
-    if not ch then return false end
-    local hrp = ch:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
-    
-    local seat = vehicle:FindFirstChildWhichIsA("VehicleSeat")
-    if not seat then
-        for _, desc in ipairs(vehicle:GetDescendants()) do
-            if desc:IsA("VehicleSeat") then
-                seat = desc
-                break
-            end
-        end
-    end
-    if not seat then return false end
-    
-    local seatPos = seat.Position
-    if (hrp.Position - seatPos).Magnitude > 15 then
-        flyTo(seatPos + V3new(0, 3, 2), S.AutoFarmSpeed or 120)
-        task.wait(0.5)
-    end
-    
-    pcall(function()
-        fireproximityprompt(seat:FindFirstChildOfClass("ProximityPrompt"))
-    end)
-    pcall(function()
-        seat.Occupant = hrp
-    end)
-    task.wait(0.5)
-    return true
-end
-
 local function flyTo(targetPos, speed)
     stopCurrentFly()
     local ch = LP.Character
@@ -206,9 +126,6 @@ local function flyTo(targetPos, speed)
 
     speed = speed or (S.AutoFarmSpeed or 120)
 
-    local vehicle = getVehicle()
-    local isInVehicle = vehicle ~= nil
-    
     local platform = Instance.new("Part")
     platform.Name = "JG_Bypass_Platform"
     platform.Size = V3new(12, 1, 12)
@@ -218,6 +135,7 @@ local function flyTo(targetPos, speed)
     platform.Parent = ws
 
     local alive = true
+    local groundCheck = 0
     
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
@@ -226,13 +144,6 @@ local function flyTo(targetPos, speed)
                 for _, part in ipairs(ch:GetDescendants()) do
                     if part:IsA("BasePart") and part ~= platform then
                         part.CanCollide = false
-                    end
-                end
-                if vehicle then
-                    for _, vPart in ipairs(vehicle:GetDescendants()) do
-                        if vPart:IsA("BasePart") then
-                            vPart.CanCollide = false
-                        end
                     end
                 end
                 platform.CFrame = hrp.CFrame * CFnew(0, -3.5, 0)
@@ -256,22 +167,36 @@ local function flyTo(targetPos, speed)
         if dist < 4 then break end
         
         local dir = (targetPos - currentPos).Unit
-        local stepSize = speed * (isInVehicle and 1.5 or 1)
-        local nextStep = currentPos + (dir * stepSize * 0.05)
+        local nextStep = currentPos + (dir * (speed * 0.05))
         
-        hrp.CFrame = CFnew(nextStep, targetPos)
+        local ray = RaycastParams.new()
+        ray.FilterType = Enum.RaycastFilterType.Blacklist
+        ray.FilterDescendantsInstances = {ch, platform}
+        local hit = ws:Raycast(currentPos + V3new(0, 5, 0), V3new(0, -10, 0), ray)
         
-        if vehicle then
-            pcall(function()
-                for _, vPart in ipairs(vehicle:GetDescendants()) do
-                    if vPart:IsA("BasePart") and vPart ~= hrp then
-                        vPart.CFrame = CFnew(nextStep, targetPos)
-                    end
-                end
-            end)
+        if hit then
+            local groundY = hit.Position.Y
+            if currentPos.Y > groundY + 3 then
+                nextStep = V3new(nextStep.X, groundY + 2.5, nextStep.Z)
+            elseif currentPos.Y < groundY + 1.5 then
+                nextStep = V3new(nextStep.X, groundY + 2.5, nextStep.Z)
+            end
         end
         
-        task.wait(0.03)
+        groundCheck = groundCheck + 1
+        if groundCheck % 20 == 0 then
+            local checkRay = ws:Raycast(currentPos + V3new(0, 10, 0), V3new(0, -30, 0), ray)
+            if checkRay then
+                local gY = checkRay.Position.Y
+                if nextStep.Y < gY + 2 then
+                    nextStep = V3new(nextStep.X, gY + 2.5, nextStep.Z)
+                end
+            end
+            groundCheck = 0
+        end
+        
+        hrp.CFrame = CFnew(nextStep, targetPos)
+        task.wait(0.05)
     end
 
     stopCurrentFly()
@@ -283,7 +208,7 @@ local function fireProximityPrompt(prompt)
         local oldDist = prompt.MaxActivationDistance
         prompt.MaxActivationDistance = 9999
         pcall(function() fireproximityprompt(prompt) end)
-        task.wait(0.3)
+        task.wait(0.4)
         prompt.MaxActivationDistance = oldDist
     end)
 end
@@ -319,17 +244,6 @@ local function findProximityPrompt(parent, actionText)
         end
     end
     return nil
-end
-
-local function findAllProximityPrompts(parent)
-    local result = {}
-    if not parent then return result end
-    for _, desc in ipairs(parent:GetDescendants()) do
-        if desc:IsA("ProximityPrompt") then
-            table_insert(result, desc)
-        end
-    end
-    return result
 end
 
 local function findButtonInGUI(buttonName)
@@ -468,7 +382,7 @@ local function interactPromptNear(name, actionText)
                 if pp then
                     local pos = part.Position
                     if (hrp.Position - pos).Magnitude > 8 then
-                        flyTo(pos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
+                        flyTo(pos + V3new(0, 2.5, 0), S.AutoFarmSpeed or 120)
                         task.wait(0.5)
                     end
                     fireProximityPrompt(pp)
@@ -482,7 +396,7 @@ local function interactPromptNear(name, actionText)
         if pp then
             local pos = getPartPosition(target)
             if pos and (hrp.Position - pos).Magnitude > 8 then
-                flyTo(pos + V3new(0, 3, 2), S.AutoFarmSpeed or 120)
+                flyTo(pos + V3new(0, 2.5, 2), S.AutoFarmSpeed or 120)
                 task.wait(0.5)
             end
             fireProximityPrompt(pp)
@@ -490,125 +404,6 @@ local function interactPromptNear(name, actionText)
         end
     end
     return false
-end
-
-local function findSpawnVehicle()
-    local names = {"Spawn Vehicle","SpawnVehicle","VehicleSpawn","Vehicle Spawn","CarSpawn","Spawn Car","SpawnCar"}
-    for _, name in ipairs(names) do
-        local found = findInWorkspace(name)
-        if found then return found end
-    end
-    for _, desc in ipairs(ws:GetDescendants()) do
-        if desc:IsA("ProximityPrompt") then
-            local at = (desc.ActionText or ""):lower()
-            local ot = (desc.ObjectText or ""):lower()
-            if string_find(at, "spawn") or string_find(at, "vehicle") or string_find(ot, "spawn") or string_find(ot, "vehicle") then
-                return desc.Parent
-            end
-        end
-    end
-    return nil
-end
-
-local function getTayroVehicle()
-    for _, child in ipairs(ws:GetChildren()) do
-        if child:IsA("Model") and child:FindFirstChild("HumanoidRootPart") then
-            local nameLow = child.Name:lower()
-            if string_find(nameLow, "tayro") or string_find(nameLow, "cambria") then
-                return child
-            end
-        end
-    end
-    return nil
-end
-
-local function spawnVehicleTayroCambria()
-    setStatus("Ищу Spawn Vehicle...")
-    local spawnObj = findSpawnVehicle()
-    if not spawnObj then return false end
-
-    local pos = getPartPosition(spawnObj)
-    if not pos then return false end
-
-    local ch = LP.Character
-    if not ch then return false end
-    local hrp = ch:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
-
-    if (hrp.Position - pos).Magnitude > 8 then
-        setStatus("Лечу к Spawn Vehicle...")
-        flyTo(pos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
-        task.wait(0.5)
-    end
-
-    setStatus("Нажимаю E на Spawn Vehicle...")
-    local prompts = findAllProximityPrompts(spawnObj)
-    if #prompts == 0 then
-        local parent = spawnObj.Parent
-        if parent then prompts = findAllProximityPrompts(parent) end
-    end
-    for _, pp in ipairs(prompts) do
-        fireProximityPrompt(pp)
-        task.wait(0.3)
-    end
-    if #prompts == 0 then
-        interactPromptNear("Spawn Vehicle", nil)
-        task.wait(0.3)
-        interactPromptNear("Spawn", "Vehicle")
-        task.wait(0.3)
-        interactPromptNear("Vehicle", "Spawn")
-    end
-
-    task.wait(1)
-
-    setStatus("Захожу в Tayro Cambria...")
-    local carFound = false
-    for attempt = 1, 15 do
-        if not SD.AutoFarmActive then return false end
-        
-        local vehicle = getTayroVehicle()
-        if vehicle then
-            setStatus("Нашёл Tayro, сажусь...")
-            enterVehicle(vehicle)
-            carFound = true
-            break
-        end
-        
-        local btn = findButtonInGUI("Tayro Cambria")
-        if not btn then btn = findButtonInGUI("TayroCambria") end
-        if not btn then btn = findButtonInGUI("Tayro") end
-        if not btn then btn = findButtonInGUI("Cambria") end
-        if btn then
-            clickButton(btn)
-            task.wait(0.3)
-            clickButton(btn)
-            carFound = true
-            break
-        end
-        clickAllMatching("Tayro")
-        clickAllMatching("Cambria")
-        task.wait(0.5)
-    end
-
-    if carFound then
-        task.wait(0.5)
-        setStatus("Нажимаю Spawn...")
-        tryClickButton({"Spawn","spawn","Select","select","Confirm","confirm","OK","Ok"}, 10)
-        task.wait(1)
-        
-        for attempt = 1, 10 do
-            if not SD.AutoFarmActive then return false end
-            local vehicle = getTayroVehicle()
-            if vehicle then
-                setStatus("Сажусь в Tayro...")
-                enterVehicle(vehicle)
-                return true
-            end
-            task.wait(0.5)
-        end
-    end
-
-    return carFound
 end
 
 local function buyRings()
@@ -680,14 +475,10 @@ end
 local function doFarmCycle()
     if not SD.AutoFarmActive then return end
 
-    setStatus("Выхожу из машины...")
-    exitVehicle()
-    task.wait(1)
-
     setStatus("Лечу к магазину...")
     local marketPos = findAreaPosition({"BlackMarket","Black Market","GoodsMarket","Market","Shop","Jewelry","JewelryShop"})
     if marketPos then
-        flyTo(marketPos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
+        flyTo(marketPos + V3new(0, 2.5, 0), S.AutoFarmSpeed or 120)
         task.wait(0.5)
     end
 
@@ -699,33 +490,13 @@ local function doFarmCycle()
     end
 
     if not SD.AutoFarmActive then return end
-    
-    setStatus("Лечу к спавну машины...")
-    local spawnPos = findAreaPosition({"Spawn Vehicle","SpawnVehicle","VehicleSpawn","Vehicle Spawn","CarSpawn"})
-    if not spawnPos then
-        spawnPos = findAreaPosition({"Spawn","Vehicle"})
-    end
-    if spawnPos then
-        flyTo(spawnPos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
-        task.wait(0.5)
-    end
 
-    spawnVehicleTayroCambria()
-    task.wait(1)
-
-    if not SD.AutoFarmActive then return end
-
-    setStatus("Лечу к продавцу на машине...")
+    setStatus("Лечу к продавцу...")
     local sellerPos = findAreaPosition({"Smuggled Goods Seller","GoodsSeller","Seller","SellGoods","SmuggledGoods"})
     if sellerPos then
-        flyTo(sellerPos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
+        flyTo(sellerPos + V3new(0, 2.5, 0), S.AutoFarmSpeed or 120)
         task.wait(0.5)
     end
-
-    setStatus("Выхожу из машины...")
-    exitVehicle()
-    task.wait(0.5)
-
     sellGoods()
     task.wait(0.5)
 
@@ -734,7 +505,7 @@ local function doFarmCycle()
     setStatus("Лечу отмывать...")
     local launderPos = findAreaPosition({"Launder","MoneyWash","Money Wash","Wash","Laundering"})
     if launderPos then
-        flyTo(launderPos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
+        flyTo(launderPos + V3new(0, 2.5, 0), S.AutoFarmSpeed or 120)
         task.wait(0.5)
     end
     launderMoney()

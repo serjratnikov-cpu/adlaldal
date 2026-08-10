@@ -148,17 +148,15 @@ local function groundMoveTo(targetPos, speed)
 
     speed = speed or (S.AutoFarmSpeed or 80)
     local alive = true
-    local oldWS = hum.WalkSpeed
     local stuckCount = 0
     local lastPos = hrp.Position
-    local liftHeight = 0
+    local MAX_CLIMB = 6
 
     local moveConn = RS.Heartbeat:Connect(function(dt)
         if not alive then return end
         if not ch or not ch.Parent or not hrp or not hrp.Parent then alive = false return end
 
         local myPos = hrp.Position
-        local flatTarget = V3new(targetPos.X, myPos.Y, targetPos.Z)
         local flatDist = (V3new(myPos.X, 0, myPos.Z) - V3new(targetPos.X, 0, targetPos.Z)).Magnitude
 
         if flatDist < 6 then
@@ -166,38 +164,61 @@ local function groundMoveTo(targetPos, speed)
             if vertDist < 15 then alive = false return end
         end
 
+        local flatTarget = V3new(targetPos.X, myPos.Y, targetPos.Z)
         local moveDir = (flatTarget - myPos)
         if moveDir.Magnitude > 0 then moveDir = moveDir.Unit end
-
-        local forwardCheck = rayForward(myPos + V3new(0, 1, 0), moveDir, 6)
-        local needLift = false
-        if forwardCheck then
-            local wallHeight = forwardCheck.Position.Y - myPos.Y
-            if wallHeight > -1 then
-                needLift = true
-                local topCheck = rayDown(forwardCheck.Position + V3new(0, 30, 0) + moveDir * 3, 40)
-                if topCheck then
-                    liftHeight = topCheck.Y + 4
-                else
-                    liftHeight = myPos.Y + 15
-                end
-            end
-        end
 
         local stepDist = speed * dt
         local newFlatPos = myPos + moveDir * stepDist
 
-        local groundPos = rayDown(V3new(newFlatPos.X, myPos.Y + 20, newFlatPos.Z), 80)
+        local needJump = false
+        local jumpHeight = 0
+
+        local feetCheck = rayForward(myPos + V3new(0, -2, 0), moveDir, 4)
+        local kneeCheck = rayForward(myPos + V3new(0, 0, 0), moveDir, 4)
+        local headCheck = rayForward(myPos + V3new(0, 3, 0), moveDir, 4)
+
+        if kneeCheck and not headCheck then
+            local obstacleTop = kneeCheck.Position.Y
+            local climbNeeded = obstacleTop - (myPos.Y - 3)
+            if climbNeeded > 0 and climbNeeded < MAX_CLIMB then
+                needJump = true
+                jumpHeight = obstacleTop + 4
+            end
+        elseif feetCheck and not kneeCheck then
+            local stepH = feetCheck.Position.Y - (myPos.Y - 3)
+            if stepH > 0 and stepH < 3 then
+                needJump = true
+                jumpHeight = feetCheck.Position.Y + 4
+            end
+        end
+
+        if headCheck and kneeCheck then
+            local params2 = RaycastParams.new()
+            params2.FilterType = Enum.RaycastFilterType.Exclude
+            if ch then params2.FilterDescendantsInstances = {ch} end
+            local sideDir1 = V3new(-moveDir.Z, 0, moveDir.X)
+            local sideHit = ws:Raycast(myPos, sideDir1 * 10, params2)
+            if not sideHit then
+                newFlatPos = myPos + sideDir1 * stepDist
+            else
+                newFlatPos = myPos + V3new(moveDir.Z, 0, -moveDir.X) * stepDist
+            end
+            needJump = false
+        end
+
+        local groundPos = rayDown(V3new(newFlatPos.X, myPos.Y + 10, newFlatPos.Z), 50)
         local finalY = myPos.Y
 
-        if needLift then
-            finalY = finalY + (liftHeight - finalY) * math.min(dt * 8, 1)
+        if needJump and jumpHeight > 0 then
+            finalY = finalY + (jumpHeight - finalY) * math.min(dt * 10, 1)
         elseif groundPos then
             local groundY = groundPos.Y + 3.5
-            if groundY > finalY + 1 then
-                finalY = finalY + (groundY - finalY) * math.min(dt * 12, 1)
-            else
-                finalY = finalY + (groundY - finalY) * math.min(dt * 15, 1)
+            local diff = groundY - finalY
+            if diff > 0 and diff < MAX_CLIMB then
+                finalY = finalY + diff * math.min(dt * 12, 1)
+            elseif diff <= 0 then
+                finalY = finalY + diff * math.min(dt * 15, 1)
             end
         end
 
@@ -207,9 +228,10 @@ local function groundMoveTo(targetPos, speed)
 
         if (myPos - lastPos).Magnitude < 0.3 then
             stuckCount = stuckCount + 1
-            if stuckCount > 60 then
-                local jumpPos = V3new(myPos.X, myPos.Y + 12, myPos.Z) + moveDir * 5
-                hrp.CFrame = CFnew(jumpPos) * (hrp.CFrame - hrp.CFrame.Position)
+            if stuckCount > 90 then
+                local sideDir = V3new(-moveDir.Z, 0, moveDir.X)
+                local sidePos = myPos + sideDir * 8
+                hrp.CFrame = CFnew(sidePos) * (hrp.CFrame - hrp.CFrame.Position)
                 stuckCount = 0
             end
         else

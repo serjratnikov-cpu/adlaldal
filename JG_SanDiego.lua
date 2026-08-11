@@ -159,6 +159,25 @@ local function flyTo(targetPos, speed)
         end)
     end
 
+    -- Предварительный подъём перед полётом
+    local startPos = hrp.Position
+    local upPos = startPos + V3new(0, 25, 0)
+    for i = 1, 20 do
+        if not alive or not SD.AutoFarmActive then break end
+        if not hrp or not hrp.Parent then break end
+        local cur = hrp.Position
+        local d = (cur - upPos).Magnitude
+        if d < 3 then break end
+        local udir = (upPos - cur).Unit
+        local udt = task.wait()
+        if udt > 0.05 then udt = 0.05 end
+        local ustep = speed * udt
+        if ustep > d then ustep = d end
+        hrp.CFrame = CFnew(cur + udir * ustep, cur + udir * ustep + (targetPos - cur).Unit)
+        pcall(function() hrp.AssemblyLinearVelocity = V3new(0,0,0) end)
+        hum:ChangeState(Enum.HumanoidStateType.Freefall)
+    end
+
     while alive and SD.AutoFarmActive do
         if not ch or not ch.Parent or not hrp or not hrp.Parent then break end
 
@@ -167,18 +186,38 @@ local function flyTo(targetPos, speed)
         if totalDist < 5 then break end
 
         local dir = (targetPos - myPos).Unit
-
-        -- Обход препятствий: raycast вперёд
-        local wallCheck = ws:Raycast(myPos, dir * 8, rayParams)
-        if wallCheck then
-            -- Есть стена впереди — поднимаемся выше
-            dir = (V3new(dir.X, 0.6, dir.Z)).Unit
-        end
-
         local dt = task.wait()
         if dt > 0.05 then dt = 0.05 end
         groundTimer = groundTimer + dt
         stepCount = stepCount + 1
+
+        -- Обход препятствий: вперёд, вверх, влево, вправо
+        local wallFwd = ws:Raycast(myPos, dir * 10, rayParams)
+        if wallFwd then
+            -- Пробуем вверх
+            local upDir = V3new(dir.X, 0.8, dir.Z).Unit
+            local wallUp = ws:Raycast(myPos, upDir * 10, rayParams)
+            if not wallUp then
+                dir = upDir
+            else
+                -- Пробуем вправо
+                local rightDir = V3new(dir.Z, 0, -dir.X).Unit
+                local wallRight = ws:Raycast(myPos, rightDir * 10, rayParams)
+                if not wallRight then
+                    dir = V3new(rightDir.X, 0.4, rightDir.Z).Unit
+                else
+                    -- Пробуем влево
+                    local leftDir = V3new(-dir.Z, 0, dir.X).Unit
+                    local wallLeft = ws:Raycast(myPos, leftDir * 10, rayParams)
+                    if not wallLeft then
+                        dir = V3new(leftDir.X, 0.4, leftDir.Z).Unit
+                    else
+                        -- Всё заблокировано — идём вверх принудительно
+                        dir = V3new(0, 1, 0)
+                    end
+                end
+            end
+        end
 
         local step = speed * dt
         local maxStep = math.min(totalDist, 60)

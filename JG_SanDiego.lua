@@ -123,12 +123,15 @@ local function flyTo(targetPos, speed)
     local ch = LP.Character
     if not ch then return end
     local hrp = ch:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
+    local hum = ch:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
 
     speed = speed or (S.AutoFarmSpeed or 60)
 
     local alive = true
-
+    local stepCount = 0
+    local teleportCount = 0
+    
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
         pcall(function()
@@ -160,10 +163,40 @@ local function flyTo(targetPos, speed)
         if step > dist then step = dist end
 
         local newPos = myPos + dir * step
+        
+        stepCount = stepCount + 1
+        
+        if stepCount % 3 == 0 then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+        
+        if stepCount % 5 == 0 then
+            local ray = RaycastParams.new()
+            ray.FilterType = Enum.RaycastFilterType.Blacklist
+            ray.FilterDescendantsInstances = {ch}
+            local hit = ws:Raycast(newPos + V3new(0, 5, 0), V3new(0, -10, 0), ray)
+            if hit and (newPos.Y - hit.Position.Y) > 5 then
+                newPos = V3new(newPos.X, hit.Position.Y + 2.5, newPos.Z)
+            end
+        end
+        
         hrp.CFrame = CFnew(newPos, newPos + dir)
         pcall(function() hrp.Velocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyAngularVelocity = V3new(0, 0, 0) end)
+        
+        if stepCount % 20 == 0 then
+            hum:ChangeState(Enum.HumanoidStateType.Freefall)
+            task.wait(0.05)
+            hum:ChangeState(Enum.HumanoidStateType.Running)
+        end
+        
+        if stepCount % 45 == 0 then
+            teleportCount = teleportCount + 1
+            hum.Sit = true
+            task.wait(0.1)
+            hum.Sit = false
+        end
     end
 
     stopCurrentFly()

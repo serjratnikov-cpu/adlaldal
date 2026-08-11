@@ -116,6 +116,8 @@ local function stopCurrentFly()
     end
 end
 
+local MAX_STEP = 42
+
 local function flyTo(targetPos, speed)
     stopCurrentFly()
     local ch = LP.Character
@@ -124,15 +126,12 @@ local function flyTo(targetPos, speed)
     local hum = ch:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return end
 
-    speed = speed or (S.AutoFarmSpeed or 120)
-    -- Ограничиваем скорость чтобы не триггерить AntiTp
-    if speed > 130 then speed = 130 end
+    speed = speed or (S.AutoFarmSpeed or 60)
 
     local alive = true
-    local stepCount = 0
-    local flyTime = 0
     local groundTimer = 0
-    local GROUND_EVERY = 2.5 -- касаемся земли каждые 2.5с (лимит 4.1с)
+    local GROUND_EVERY = 2.2
+    local stepCount = 0
 
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Blacklist
@@ -141,14 +140,12 @@ local function flyTo(targetPos, speed)
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
         pcall(function()
-            if ch and hrp then
-                for _, part in ipairs(ch:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
+            if ch and ch.Parent then
+                for _, p in pairs(ch:GetDescendants()) do
+                    if p:IsA("BasePart") then
+                        p.CanCollide = false
                     end
                 end
-                pcall(function() hrp.Velocity = V3new(0, 0, 0) end)
-                pcall(function() hrp.RotVelocity = V3new(0, 0, 0) end)
             end
         end)
     end)
@@ -158,7 +155,7 @@ local function flyTo(targetPos, speed)
         pcall(function() noclipConn:Disconnect() end)
         pcall(function()
             if hum then
-                hum:ChangeState(Enum.HumanoidStateType.Landed)
+                hum:ChangeState(Enum.HumanoidStateType.Running)
             end
         end)
     end
@@ -172,47 +169,45 @@ local function flyTo(targetPos, speed)
 
         local dir = (targetPos - myPos).Unit
         local dt = task.wait()
-        flyTime = flyTime + dt
         groundTimer = groundTimer + dt
+        stepCount = stepCount + 1
 
-        -- ===== ОБХОД ANTIFY: касание земли каждые 2.5с =====
-        if groundTimer >= GROUND_EVERY then
-            local hit = ws:Raycast(myPos + V3new(0, 10, 0), V3new(0, -120, 0), rayParams)
-            if hit then
-                -- Запоминаем где были
-                local savedCF = hrp.CFrame
-                -- Быстро касаемся земли
-                hrp.CFrame = CFnew(hit.Position + V3new(0, 3.0, 0), hit.Position + V3new(0, 3.0, 0) + dir)
-                hum:ChangeState(Enum.HumanoidStateType.Landed)
-                pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
-                task.wait(0.12)
-                -- Возвращаемся точно туда где были
-                hrp.CFrame = savedCF
-                hum:ChangeState(Enum.HumanoidStateType.Jumping)
-            end
-            groundTimer = 0
-        end
-        -- ====================================================
-
-        -- ОРИГИНАЛЬНАЯ ЛОГИКА ДВИЖЕНИЯ (не тронута)
         local step = speed * dt
-        if step > 15 then step = 15 end
+        if step > MAX_STEP then step = MAX_STEP end
         if step > dist then step = dist end
 
         local newPos = myPos + dir * step
 
-        if stepCount % 5 == 0 then
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        -- Freefall exploit: даём поблажку античиту через состояние падения
+        if stepCount % 3 == 0 then
+            hum:ChangeState(Enum.HumanoidStateType.Freefall)
+        end
+
+        -- Касание земли каждые 2.2с чтобы сбросить AntiFly таймер
+        if groundTimer >= GROUND_EVERY then
+            local hit = ws:Raycast(myPos + V3new(0, 10, 0), V3new(0, -150, 0), rayParams)
+            if hit then
+                local savedCF = hrp.CFrame
+
+                -- Seat exploit: на долю секунды симулируем посадку
+                hrp.CFrame = CFnew(hit.Position + V3new(0, 3.0, 0), hit.Position + V3new(0, 3.0, 0) + dir)
+                hum:ChangeState(Enum.HumanoidStateType.Seated)
+                task.wait(0.05)
+                hum:ChangeState(Enum.HumanoidStateType.Landed)
+                pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
+                task.wait(0.08)
+
+                -- Возвращаемся точно на траекторию
+                hrp.CFrame = savedCF
+                hum:ChangeState(Enum.HumanoidStateType.Freefall)
+            end
+            groundTimer = 0
         end
 
         hrp.CFrame = CFnew(newPos, newPos + dir)
         pcall(function() hrp.Velocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyAngularVelocity = V3new(0, 0, 0) end)
-
-        stepCount = stepCount + 1
-
-        task.wait(0.04)
     end
 
     stopCurrentFly()
@@ -788,4 +783,4 @@ function SD.cleanup()
 end
 
 return SD
-end
+end 

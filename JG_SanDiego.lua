@@ -116,6 +116,53 @@ local function stopCurrentFly()
     end
 end
 
+local function raycastCheck(origin, direction, filterList)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = filterList or {}
+    params.CollisionGroup = "Default"
+    local result = ws:Raycast(origin, direction, params)
+    return result
+end
+
+local function findAvoidDirection(origin, mainDir, filterList, checkDist)
+    checkDist = checkDist or 18
+    local up = V3new(0, 1, 0)
+    local right = mainDir:Cross(up)
+    if right.Magnitude < 0.01 then
+        right = mainDir:Cross(V3new(1, 0, 0))
+    end
+    right = right.Unit
+    local upDir = mainDir:Cross(right).Unit
+
+    local tryDirs = {
+        (mainDir + up * 1.5).Unit,
+        (mainDir + upDir * 1.5).Unit,
+        (mainDir - upDir * 1.5).Unit,
+        (mainDir + right * 1.5).Unit,
+        (mainDir - right * 1.5).Unit,
+        (mainDir + up * 2 + right).Unit,
+        (mainDir + up * 2 - right).Unit,
+        (mainDir - upDir * 2 + right).Unit,
+        (mainDir - upDir * 2 - right).Unit,
+        up,
+        (up + right * 0.5).Unit,
+        (up - right * 0.5).Unit,
+        right,
+        (-right),
+        (mainDir + up * 3).Unit,
+    }
+
+    for _, dir in ipairs(tryDirs) do
+        local hit = raycastCheck(origin, dir * checkDist, filterList)
+        if not hit then
+            return dir
+        end
+    end
+
+    return (mainDir + up * 3).Unit
+end
+
 local function flyTo(targetPos, speed)
     stopCurrentFly()
     local ch = LP.Character
@@ -155,13 +202,67 @@ local function flyTo(targetPos, speed)
         pcall(function() bg:Destroy() end)
     end
 
+    local filterList = {ch}
+    local stuckCounter = 0
+    local lastPos = hrp.Position
+    local rayDist = 20
+    local avoidDir = nil
+    local avoidTicks = 0
+
     while alive and SD.AutoFarmActive do
         if not ch or not ch.Parent or not hrp or not hrp.Parent then break end
-        local dist = (hrp.Position - targetPos).Magnitude
+        local myPos = hrp.Position
+        local dist = (myPos - targetPos).Magnitude
         if dist < 10 then break end
-        local dir = (targetPos - hrp.Position).Unit
-        bv.Velocity = dir * speed
-        bg.CFrame = CFnew(hrp.Position, targetPos)
+
+        local mainDir = (targetPos - myPos).Unit
+        local moveDir = mainDir
+
+        if avoidTicks > 0 and avoidDir then
+            avoidTicks = avoidTicks - 1
+            moveDir = avoidDir
+            if avoidTicks <= 0 then
+                avoidDir = nil
+            end
+        else
+            local forwardCheck = raycastCheck(myPos, mainDir * rayDist, filterList)
+            if forwardCheck then
+                local wallDist = (forwardCheck.Position - myPos).Magnitude
+                if wallDist < rayDist then
+                    avoidDir = findAvoidDirection(myPos, mainDir, filterList, rayDist)
+                    avoidTicks = math.max(5, mathfloor(15 * (1 - wallDist / rayDist)))
+                    moveDir = avoidDir
+                end
+            end
+
+            local closeCheck = raycastCheck(myPos, mainDir * 6, filterList)
+            if closeCheck then
+                avoidDir = findAvoidDirection(myPos, mainDir, filterList, rayDist)
+                avoidTicks = 10
+                moveDir = avoidDir
+            end
+        end
+
+        local moved = (myPos - lastPos).Magnitude
+        if moved < 0.3 then
+            stuckCounter = stuckCounter + 1
+        else
+            stuckCounter = 0
+        end
+
+        if stuckCounter > 15 then
+            avoidDir = findAvoidDirection(myPos, mainDir, filterList, rayDist)
+            if not avoidDir then
+                avoidDir = V3new(0, 1, 0)
+            end
+            avoidTicks = 20
+            moveDir = avoidDir
+            stuckCounter = 0
+        end
+
+        lastPos = myPos
+        bv.Velocity = moveDir * speed
+        bg.CFrame = CFnew(myPos, myPos + moveDir)
         task.wait()
     end
 

@@ -156,12 +156,8 @@ local function flyTo(targetPos, speed)
         local dir = (targetPos - myPos).Unit
         local dt = task.wait()
         local step = speed * dt
-        if step > MAX_STEP then
-            step = MAX_STEP
-        end
-        if step > dist then
-            step = dist
-        end
+        if step > MAX_STEP then step = MAX_STEP end
+        if step > dist then step = dist end
 
         local newPos = myPos + dir * step
         hrp.CFrame = CFnew(newPos, newPos + dir)
@@ -179,7 +175,7 @@ local function fireProximityPrompt(prompt)
         local oldDist = prompt.MaxActivationDistance
         prompt.MaxActivationDistance = 9999
         pcall(function() fireproximityprompt(prompt) end)
-        task.wait(0.4)
+        task.wait(0.5)
         prompt.MaxActivationDistance = oldDist
     end)
 end
@@ -263,6 +259,29 @@ local function clickButton(btn)
     return ok
 end
 
+local function clickAllGUIButtons(name)
+    local pg = LP.PlayerGui
+    if not pg then return false end
+    local bLow = name:lower()
+    local found = false
+    for _, gui in ipairs(pg:GetDescendants()) do
+        if (gui:IsA("TextButton") or gui:IsA("ImageButton")) then
+            local vis = true
+            pcall(function() vis = gui.Visible end)
+            if vis then
+                local match = false
+                if gui.Name and string_find(gui.Name:lower(), bLow) then match = true end
+                if gui:IsA("TextButton") and gui.Text and string_find(gui.Text:lower(), bLow) then match = true end
+                if match then
+                    clickButton(gui)
+                    found = true
+                end
+            end
+        end
+    end
+    return found
+end
+
 local function tryFireRemote(name, ...)
     local args = table.pack(...)
     local rs = game:GetService("ReplicatedStorage")
@@ -344,55 +363,26 @@ local function findAllPrompts(name)
     return results
 end
 
-local function flyToAndInteract(obj, actionText)
-    if not obj then return false end
-    local ch = LP.Character
-    if not ch or not ch:FindFirstChild("HumanoidRootPart") then return false end
-
-    local frontPos = getFrontPosition(obj, 4)
-    if not frontPos then
-        frontPos = getPartPosition(obj)
-    end
-    if not frontPos then return false end
-
-    local hrp = ch.HumanoidRootPart
-    if (hrp.Position - frontPos).Magnitude > 8 then
-        flyTo(frontPos, S.AutoFarmSpeed or 120)
-        task.wait(0.5)
-    end
-
-    local pp = findProximityPrompt(obj, actionText)
-    if not pp and obj.Parent then
-        pp = findProximityPrompt(obj.Parent, actionText)
-    end
-    if pp then
-        fireProximityPrompt(pp)
-        return true
-    end
-    return false
+local function firePromptAndWait(pp)
+    if not pp then return end
+    fireProximityPrompt(pp)
+    task.wait(1)
+    fireProximityPrompt(pp)
+    task.wait(1)
+    fireProximityPrompt(pp)
 end
 
-local function interactPromptNear(name, actionText)
+local function flyToFront(obj)
+    if not obj then return end
+    local frontPos = getFrontPosition(obj, 4)
+    if not frontPos then frontPos = getPartPosition(obj) end
+    if not frontPos then return end
     local ch = LP.Character
-    if not ch then return false end
-    local hrp = ch:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
-
-    local target = findNPC(name)
-    if not target then
-        local part = findInWorkspace(name)
-        if part then
-            if part:IsA("Model") then
-                target = part
-            elseif part:IsA("BasePart") then
-                return flyToAndInteract(part, actionText)
-            end
-        end
+    if not ch or not ch:FindFirstChild("HumanoidRootPart") then return end
+    if (ch.HumanoidRootPart.Position - frontPos).Magnitude > 6 then
+        flyTo(frontPos, S.AutoFarmSpeed or 120)
     end
-    if target then
-        return flyToAndInteract(target, actionText)
-    end
-    return false
+    task.wait(0.5)
 end
 
 local function buyRings()
@@ -405,7 +395,20 @@ local function buyRings()
     }
     for _, pair in ipairs(buyTargets) do
         if bought then break end
-        bought = interactPromptNear(pair[1], pair[2])
+        local target = findNPC(pair[1])
+        if not target then
+            local part = findInWorkspace(pair[1])
+            if part then target = part end
+        end
+        if target then
+            flyToFront(target)
+            local pp = findProximityPrompt(target, pair[2])
+            if not pp and target.Parent then pp = findProximityPrompt(target.Parent, pair[2]) end
+            if pp then
+                fireProximityPrompt(pp)
+                bought = true
+            end
+        end
     end
     if not bought then
         local remotes = {"BuyRing","PurchaseRing","BuyItem","Purchase","BuyGoods","Buy"}
@@ -423,147 +426,187 @@ end
 local function sellGoods()
     setStatus("Продажа товаров...")
     local sold = false
-    for attempt = 1, 5 do
+
+    for attempt = 1, 10 do
         if sold then break end
         if not SD.AutoFarmActive then return false end
-        local sellTargets = {
-            {"Smuggled Goods Seller","Sell"}, {"Sell",nil},
-            {"Seller","Sell"}, {"Goods","Sell"}
-        }
-        for _, pair in ipairs(sellTargets) do
+        setStatus("Продажа... попытка " .. attempt)
+
+        local sellerNames = {"Smuggled Goods Seller","GoodsSeller","Seller","Goods","Sell"}
+        for _, sn in ipairs(sellerNames) do
             if sold then break end
-            sold = interactPromptNear(pair[1], pair[2])
-        end
-        if not sold then
-            local prompts = findAllPrompts("sell")
-            for _, pp in ipairs(prompts) do
-                if not sold then
-                    local par = pp.Parent
-                    if par then
-                        local pos = getPartPosition(par)
-                        if pos then
-                            local ch = LP.Character
-                            if ch and ch:FindFirstChild("HumanoidRootPart") then
-                                if (ch.HumanoidRootPart.Position - pos).Magnitude > 8 then
-                                    flyTo(pos, S.AutoFarmSpeed or 120)
-                                    task.wait(0.5)
-                                end
-                            end
-                            fireProximityPrompt(pp)
-                            sold = true
-                        end
-                    end
+            local target = findNPC(sn)
+            if not target then
+                local part = findInWorkspace(sn)
+                if part then target = part end
+            end
+            if target then
+                flyToFront(target)
+                task.wait(0.3)
+                local pp = findProximityPrompt(target, "sell")
+                if not pp then pp = findProximityPrompt(target, nil) end
+                if not pp and target.Parent then
+                    pp = findProximityPrompt(target.Parent, "sell")
+                    if not pp then pp = findProximityPrompt(target.Parent, nil) end
+                end
+                if pp then
+                    firePromptAndWait(pp)
+                    sold = true
                 end
             end
         end
+
+        if not sold then
+            local prompts = findAllPrompts("sell")
+            for _, pp in ipairs(prompts) do
+                if sold then break end
+                local par = pp.Parent
+                if par then
+                    flyToFront(par)
+                    task.wait(0.3)
+                    firePromptAndWait(pp)
+                    sold = true
+                end
+            end
+        end
+
         if not sold then
             local remotes = {"SellGoods","Sell","SellItem","SellAll"}
             for _, rn in ipairs(remotes) do
                 if tryFireRemote(rn) then sold = true break end
             end
         end
+
         if not sold then
             local btn = findButtonInGUI("Sell")
-            if btn then clickButton(btn) sold = true end
-        end
-        if sold then
-            task.wait(2)
-            local confirmBtn = findButtonInGUI("Confirm") or findButtonInGUI("Yes") or findButtonInGUI("Accept") or findButtonInGUI("OK")
-            if confirmBtn then
-                clickButton(confirmBtn)
+            if btn then
+                clickButton(btn)
                 task.wait(1)
+                clickButton(btn)
+                sold = true
             end
         end
-        if not sold then task.wait(0.5) end
+
+        if sold then
+            task.wait(1.5)
+            clickAllGUIButtons("sell")
+            task.wait(1)
+            clickAllGUIButtons("confirm")
+            task.wait(0.5)
+            clickAllGUIButtons("yes")
+            task.wait(0.5)
+            clickAllGUIButtons("accept")
+            task.wait(0.5)
+            clickAllGUIButtons("ok")
+            task.wait(1)
+        end
+
+        if not sold then task.wait(1) end
     end
+
     return sold
 end
 
 local function launderMoney()
     setStatus("Отмывка денег...")
     local done = false
-    for attempt = 1, 5 do
+
+    for attempt = 1, 10 do
         if done then break end
         if not SD.AutoFarmActive then return false end
-        local targets = {
-            {"Launder",nil},{"Laundromat",nil},{"LAUNDROMAT",nil},
-            {"Money Wash",nil},{"Wash","Launder"},{"WashingMachine",nil}
-        }
-        for _, pair in ipairs(targets) do
+        setStatus("Отмывка... попытка " .. attempt)
+
+        local launderNames = {"Laundromat","LAUNDROMAT","Launder","MoneyWash","Money Wash","Wash","Laundering","WashingMachine","Washing Machine"}
+        for _, ln in ipairs(launderNames) do
             if done then break end
-            local obj = findInWorkspace(pair[1])
+            local obj = findInWorkspace(ln)
             if obj then
-                done = flyToAndInteract(obj, pair[2])
+                flyToFront(obj)
+                task.wait(0.3)
+                local pp = findProximityPrompt(obj, "launder")
+                if not pp then pp = findProximityPrompt(obj, "wash") end
+                if not pp then pp = findProximityPrompt(obj, nil) end
+                if not pp and obj.Parent then
+                    pp = findProximityPrompt(obj.Parent, "launder")
+                    if not pp then pp = findProximityPrompt(obj.Parent, "wash") end
+                    if not pp then pp = findProximityPrompt(obj.Parent, nil) end
+                end
+                if pp then
+                    firePromptAndWait(pp)
+                    done = true
+                end
             end
         end
+
         if not done then
             local prompts = findAllPrompts("launder")
             for _, pp in ipairs(prompts) do
-                if not done then
-                    local par = pp.Parent
-                    if par then
-                        local frontPos = getFrontPosition(par, 4)
-                        if not frontPos then frontPos = getPartPosition(par) end
-                        if frontPos then
-                            local ch = LP.Character
-                            if ch and ch:FindFirstChild("HumanoidRootPart") then
-                                if (ch.HumanoidRootPart.Position - frontPos).Magnitude > 8 then
-                                    flyTo(frontPos, S.AutoFarmSpeed or 120)
-                                    task.wait(0.5)
-                                end
-                            end
-                            fireProximityPrompt(pp)
-                            done = true
-                        end
-                    end
+                if done then break end
+                local par = pp.Parent
+                if par then
+                    flyToFront(par)
+                    task.wait(0.3)
+                    firePromptAndWait(pp)
+                    done = true
                 end
             end
         end
+
         if not done then
             local prompts = findAllPrompts("wash")
             for _, pp in ipairs(prompts) do
-                if not done then
-                    local par = pp.Parent
-                    if par then
-                        local frontPos = getFrontPosition(par, 4)
-                        if not frontPos then frontPos = getPartPosition(par) end
-                        if frontPos then
-                            local ch = LP.Character
-                            if ch and ch:FindFirstChild("HumanoidRootPart") then
-                                if (ch.HumanoidRootPart.Position - frontPos).Magnitude > 8 then
-                                    flyTo(frontPos, S.AutoFarmSpeed or 120)
-                                    task.wait(0.5)
-                                end
-                            end
-                            fireProximityPrompt(pp)
-                            done = true
-                        end
-                    end
+                if done then break end
+                local par = pp.Parent
+                if par then
+                    flyToFront(par)
+                    task.wait(0.3)
+                    firePromptAndWait(pp)
+                    done = true
                 end
             end
         end
+
         if not done then
             local remotes = {"Launder","LaunderMoney","WashMoney","MoneyWash","LaunderCash"}
             for _, rn in ipairs(remotes) do
                 if tryFireRemote(rn) then done = true break end
             end
         end
-        if done then
-            task.wait(2)
-            local confirmBtn = findButtonInGUI("Confirm") or findButtonInGUI("Yes") or findButtonInGUI("Accept") or findButtonInGUI("Launder") or findButtonInGUI("OK")
-            if confirmBtn then
-                clickButton(confirmBtn)
+
+        if not done then
+            local btn = findButtonInGUI("Launder") or findButtonInGUI("Wash")
+            if btn then
+                clickButton(btn)
                 task.wait(1)
+                clickButton(btn)
+                done = true
             end
         end
-        if not done then task.wait(0.5) end
+
+        if done then
+            task.wait(1.5)
+            clickAllGUIButtons("launder")
+            task.wait(1)
+            clickAllGUIButtons("confirm")
+            task.wait(0.5)
+            clickAllGUIButtons("yes")
+            task.wait(0.5)
+            clickAllGUIButtons("accept")
+            task.wait(0.5)
+            clickAllGUIButtons("ok")
+            task.wait(1)
+        end
+
+        if not done then task.wait(1) end
     end
+
     return done
 end
 
 local function doRingFarmCycle()
     if not SD.AutoFarmActive then return end
-    setStatus("Кольца: лечу к магазину...")
+
+    setStatus("Лечу к магазину...")
     local marketPos = findAreaPosition({"BlackMarket","Black Market","GoodsMarket","Market","Shop","Jewelry","JewelryShop"})
     if marketPos then
         flyTo(marketPos, S.AutoFarmSpeed or 120)
@@ -571,43 +614,44 @@ local function doRingFarmCycle()
     end
     for i = 1, 5 do
         if not SD.AutoFarmActive then return end
-        setStatus("Кольца: покупка " .. i .. "/5")
+        setStatus("Покупка " .. i .. "/5")
         buyRings()
         task.wait(0.6)
     end
+
     if not SD.AutoFarmActive then return end
-    setStatus("Кольца: лечу к продавцу...")
+    setStatus("Лечу к продавцу...")
     local sellerObj = findAreaObj({"Smuggled Goods Seller","GoodsSeller","Seller","SellGoods","SmuggledGoods"})
     if sellerObj then
-        local frontPos = getFrontPosition(sellerObj, 4)
-        if frontPos then
-            flyTo(frontPos, S.AutoFarmSpeed or 120)
-        else
-            local pos = getPartPosition(sellerObj)
-            if pos then flyTo(pos, S.AutoFarmSpeed or 120) end
-        end
-        task.wait(0.5)
+        flyToFront(sellerObj)
     end
-    setStatus("Кольца: продаю...")
-    sellGoods()
-    task.wait(2)
+
     if not SD.AutoFarmActive then return end
-    setStatus("Кольца: лечу отмывать...")
+    local soldOk = sellGoods()
+    if not soldOk then
+        setStatus("НЕ ПРОДАЛ! Пробую ещё...")
+        task.wait(2)
+        sellGoods()
+    end
+
+    if not SD.AutoFarmActive then return end
+    setStatus("Лечу отмывать...")
     local launderObj = findAreaObj({"Laundromat","LAUNDROMAT","Launder","MoneyWash","Money Wash","Wash","Laundering","WashingMachine"})
     if launderObj then
-        local frontPos = getFrontPosition(launderObj, 4)
-        if frontPos then
-            flyTo(frontPos, S.AutoFarmSpeed or 120)
-        else
-            local pos = getPartPosition(launderObj)
-            if pos then flyTo(pos, S.AutoFarmSpeed or 120) end
-        end
-        task.wait(0.5)
+        flyToFront(launderObj)
     end
-    setStatus("Кольца: отмываю...")
-    launderMoney()
-    task.wait(2)
+
+    if not SD.AutoFarmActive then return end
+    local launderOk = launderMoney()
+    if not launderOk then
+        setStatus("НЕ ОТМЫЛ! Пробую ещё...")
+        task.wait(2)
+        launderMoney()
+    end
+
+    task.wait(1)
     SD.AutoFarmLaps = SD.AutoFarmLaps + 1
+    setStatus("Круг #" .. SD.AutoFarmLaps .. " завершён!")
 end
 
 function SD.startAutoFarm()

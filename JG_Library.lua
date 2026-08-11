@@ -1,5 +1,3 @@
-return function(S, Binds, BindModes, WHITELIST)
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
@@ -862,12 +860,34 @@ end
 function UI.applyTheme(name)
     local t = Themes[name] if not t then return end
     for k,v in pairs(t) do C[k]=v end
-    for _,e in pairs(UI.themedElements) do pcall(function() if C[e.key] then tw(e.obj,{[e.prop]=C[e.key]},0.3) end end) end
+    for _,e in pairs(UI.themedElements) do
+        pcall(function()
+            if C[e.key] then
+                if e.obj:IsA("UIStroke") then
+                    e.obj.Color = C[e.key]
+                else
+                    e.obj[e.prop] = C[e.key]
+                end
+            end
+        end)
+    end
     if UI.fovCircle then pcall(function() UI.fovCircle.Color=C.Accent end) end
     for _,img in pairs(UI.arrowImages) do pcall(function() img.ImageColor3=C.Accent end) end
     if UI.targetESPImage then pcall(function() UI.targetESPImage.ImageColor3=C.Accent end) end
-    for _,entries in pairs(UI.toggleButtons) do for _,data in pairs(entries) do pcall(function() if data.setBgColor then data.setBgColor() end end) end end
-    pcall(function() if UI.currentTab then UI.currentTab.btn.BackgroundColor3=C.Card UI.currentTab.ic.TextColor3=C.Accent UI.currentTab.indicator.BackgroundColor3=C.Accent end end)
+    pcall(function()
+        for _,entries in pairs(UI.toggleButtons) do
+            for _,data in pairs(entries) do
+                if data.setBgColor then data.setBgColor() end
+            end
+        end
+    end)
+    pcall(function()
+        if UI.currentTab then
+            UI.currentTab.btn.BackgroundColor3=C.Card
+            UI.currentTab.ic.TextColor3=C.Accent
+            UI.currentTab.indicator.BackgroundColor3=C.Accent
+        end
+    end)
 end
 
 UI.fovCircle = nil

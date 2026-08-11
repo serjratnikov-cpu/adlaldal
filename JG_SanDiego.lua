@@ -116,8 +116,6 @@ local function stopCurrentFly()
     end
 end
 
-local MAX_STEP = 42
-
 local function flyTo(targetPos, speed)
     stopCurrentFly()
     local ch = LP.Character
@@ -126,7 +124,10 @@ local function flyTo(targetPos, speed)
     local hum = ch:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return end
 
+    -- Максимум 80 studs/s (лимит ~134, берём с большим запасом)
+    local MAX_SPEED = 80
     speed = speed or (S.AutoFarmSpeed or 60)
+    if speed > MAX_SPEED then speed = MAX_SPEED end
 
     local alive = true
     local groundTimer = 0
@@ -168,37 +169,39 @@ local function flyTo(targetPos, speed)
         if dist < 6 then break end
 
         local dir = (targetPos - myPos).Unit
+
+        -- task.wait() возвращает реальное время кадра
         local dt = task.wait()
+
+        -- Жёсткое ограничение dt чтобы лаги не давали огромный шаг
+        if dt > 0.1 then dt = 0.1 end
+
         groundTimer = groundTimer + dt
         stepCount = stepCount + 1
 
+        -- Шаг = скорость * время (studs/s * s = studs)
         local step = speed * dt
-        if step > MAX_STEP then step = MAX_STEP end
+        -- Дополнительная защита: максимум 8 studs за один кадр
+        if step > 8 then step = 8 end
         if step > dist then step = dist end
 
-        -- Следующая позиция: прямо к цели
         local newPos = myPos + dir * step
 
-        -- AntiFly bypass: каждые 2с прижимаемся к земле В ТОЧКЕ newPos
-        -- Никакого возврата назад - только вниз и сразу продолжаем
+        -- AntiFly bypass
         if groundTimer >= GROUND_EVERY then
             local hit = ws:Raycast(newPos + V3new(0, 10, 0), V3new(0, -150, 0), rayParams)
             if hit then
                 local groundY = hit.Position.Y + 3.0
-                -- Если земля близко снизу - просто опускаемся к ней
-                -- Если далеко внизу - не прыгаем, просто меняем стейт
-                if math.abs(newPos.Y - groundY) < 80 then
+                if math.abs(newPos.Y - groundY) < 60 then
                     newPos = V3new(newPos.X, groundY, newPos.Z)
                 end
                 hum:ChangeState(Enum.HumanoidStateType.Landed)
                 pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
             else
-                -- Земли нет (высоко в воздухе) - имитируем Freefall
                 hum:ChangeState(Enum.HumanoidStateType.Freefall)
             end
             groundTimer = 0
         else
-            -- Между касаниями - Freefall чтобы не триггерить AntiFly
             if stepCount % 4 == 0 then
                 hum:ChangeState(Enum.HumanoidStateType.Freefall)
             end

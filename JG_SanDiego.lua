@@ -116,9 +116,6 @@ local function stopCurrentFly()
     end
 end
 
--- =====================================================================
--- НОВЫЙ FLYTO: обходит AntiTp (лимит скорости) + AntiFly (ground check)
--- =====================================================================
 local function flyTo(targetPos, speed)
     stopCurrentFly()
     local ch = LP.Character
@@ -127,31 +124,24 @@ local function flyTo(targetPos, speed)
     local hum = ch:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return end
 
-    -- Скорость НЕ должна превышать лимит античита
-    -- Из лога: 2125.3 studs за 1.1s = ~1932 studs/s было, лимит ~138 studs/s
-    -- Ставим безопасную скорость
     local MAX_SAFE_SPEED = 130
     speed = speed or (S.AutoFarmSpeed or 120)
     if speed > MAX_SAFE_SPEED then speed = MAX_SAFE_SPEED end
 
     local alive = true
     local groundTimer = 0
-    local GROUND_TOUCH_EVERY = 2.8  -- каждые 2.8с касаемся земли (лимит 4.1с)
-    local totalTime = 0
+    local GROUND_TOUCH_EVERY = 2.8
 
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Blacklist
     rayParams.FilterDescendantsInstances = {ch}
 
-    -- Noclip connection
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
         pcall(function()
-            if ch and hrp then
-                for _, part in ipairs(ch:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
-                    end
+            for _, part in ipairs(ch:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
                 end
             end
         end)
@@ -160,20 +150,7 @@ local function flyTo(targetPos, speed)
     currentFlyCleanup = function()
         alive = false
         pcall(function() noclipConn:Disconnect() end)
-        pcall(function()
-            if hum then
-                hum:ChangeState(Enum.HumanoidStateType.Running)
-            end
-        end)
-    end
-
-    -- Найти ближайшую точку земли под позицией
-    local function getGroundY(pos)
-        local hit = ws:Raycast(pos + V3new(0, 50, 0), V3new(0, -200, 0), rayParams)
-        if hit then
-            return hit.Position.Y
-        end
-        return nil
+        pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
     end
 
     while alive and SD.AutoFarmActive do
@@ -185,67 +162,36 @@ local function flyTo(targetPos, speed)
 
         local dt = task.wait()
         groundTimer = groundTimer + dt
-        totalTime = totalTime + dt
 
-        -- Направление к цели
         local dir = (targetPos - myPos).Unit
-
-        -- Рассчитываем шаг (НЕ превышаем лимит)
         local step = speed * dt
         if step > dist then step = dist end
 
-        -- Новая позиция — двигаемся ПРЯМО к цели
+        -- Летим ПРЯМО к цели, без корректировки высоты
         local newPos = myPos + dir * step
 
-        -- ====== ANTI-FLY BYPASS: касание земли каждые ~2.8с ======
+        -- Касание земли для обхода AntiFly
         if groundTimer >= GROUND_TOUCH_EVERY then
-            local groundY = getGroundY(myPos)
-            if groundY then
-                -- Быстро телепортируемся на землю
-                local groundPos = V3new(myPos.X, groundY + 3.0, myPos.Z)
-                hrp.CFrame = CFnew(groundPos, groundPos + dir)
+            local hit = ws:Raycast(myPos + V3new(0, 50, 0), V3new(0, -200, 0), rayParams)
+            if hit then
+                local savedPos = newPos
+                hrp.CFrame = CFnew(hit.Position + V3new(0, 3.0, 0), targetPos)
                 hum:ChangeState(Enum.HumanoidStateType.Landed)
-                pcall(function() hrp.Velocity = V3new(0, 0, 0) end)
                 pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
-
-                -- Ждём чтобы сервер "увидел" что мы на земле
                 task.wait(0.15)
-
-                -- Прыгаем обратно и продолжаем
+                -- Возвращаемся на траекторию к цели
+                hrp.CFrame = CFnew(savedPos, savedPos + dir)
                 hum:ChangeState(Enum.HumanoidStateType.Jumping)
             end
             groundTimer = 0
         end
 
-        -- ====== Корректировка высоты: летим близко к земле ======
-        local groundY = getGroundY(newPos)
-        if groundY then
-            local minHeight = groundY + 2.5
-            local maxHeight = groundY + 6.0
-
-            if newPos.Y < minHeight then
-                newPos = V3new(newPos.X, minHeight, newPos.Z)
-            elseif newPos.Y > maxHeight then
-                -- Плавно снижаемся к безопасной высоте
-                local safeY = groundY + 3.5
-                newPos = V3new(newPos.X, myPos.Y + (safeY - myPos.Y) * 0.3, newPos.Z)
-            end
-        end
-
-        -- Перемещаем персонажа
         hrp.CFrame = CFnew(newPos, newPos + dir)
-
-        -- Обнуляем физику
         pcall(function() hrp.Velocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyAngularVelocity = V3new(0, 0, 0) end)
 
-        -- Имитируем бег/прыжки
-        if math.floor(totalTime * 10) % 7 == 0 then
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
-        else
-            hum:ChangeState(Enum.HumanoidStateType.Running)
-        end
+        hum:ChangeState(Enum.HumanoidStateType.Running)
     end
 
     stopCurrentFly()

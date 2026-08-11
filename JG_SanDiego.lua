@@ -125,11 +125,8 @@ local function flyTo(targetPos, speed)
     if not hrp or not hum then return end
 
     speed = speed or (S.AutoFarmSpeed or 300)
-    local MAX_SPEED = 300
-    if speed > MAX_SPEED then speed = MAX_SPEED end
+    if speed > 300 then speed = 300 end
 
-    -- Разбиваем путь на чанки по 60 studs чтобы античит не видел прыжок
-    local MAX_CHUNK = 60
     local alive = true
     local groundTimer = 0
     local GROUND_EVERY = 3.5
@@ -167,17 +164,16 @@ local function flyTo(targetPos, speed)
 
         local myPos = hrp.Position
         local totalDist = (myPos - targetPos).Magnitude
-        if totalDist < 6 then break end
+        if totalDist < 5 then break end
 
-        -- Промежуточная цель: не дальше MAX_CHUNK за раз
-        local chunkTarget = targetPos
-        if totalDist > MAX_CHUNK then
-            local dir60 = (targetPos - myPos).Unit
-            chunkTarget = myPos + dir60 * MAX_CHUNK
+        local dir = (targetPos - myPos).Unit
+
+        -- Обход препятствий: raycast вперёд
+        local wallCheck = ws:Raycast(myPos, dir * 8, rayParams)
+        if wallCheck then
+            -- Есть стена впереди — поднимаемся выше
+            dir = (V3new(dir.X, 0.6, dir.Z)).Unit
         end
-
-        local dir = (chunkTarget - myPos).Unit
-        local chunkDist = (myPos - chunkTarget).Magnitude
 
         local dt = task.wait()
         if dt > 0.05 then dt = 0.05 end
@@ -185,19 +181,22 @@ local function flyTo(targetPos, speed)
         stepCount = stepCount + 1
 
         local step = speed * dt
-        if step > chunkDist then step = chunkDist end
+        local maxStep = math.min(totalDist, 60)
+        if step > maxStep then step = maxStep end
 
         local newPos = myPos + dir * step
 
         if groundTimer >= GROUND_EVERY then
-            local hit = ws:Raycast(newPos + V3new(0, 10, 0), V3new(0, -150, 0), rayParams)
+            local hit = ws:Raycast(myPos + V3new(0, 10, 0), V3new(0, -150, 0), rayParams)
             if hit then
                 local groundY = hit.Position.Y + 3.0
-                if math.abs(newPos.Y - groundY) < 60 then
-                    newPos = V3new(newPos.X, groundY, newPos.Z)
+                if math.abs(myPos.Y - groundY) < 60 then
+                    local tempPos = V3new(myPos.X, groundY, myPos.Z)
+                    hrp.CFrame = CFnew(tempPos, tempPos + (targetPos - tempPos).Unit)
+                    hum:ChangeState(Enum.HumanoidStateType.Landed)
+                    pcall(function() hrp.AssemblyLinearVelocity = V3new(0,0,0) end)
+                    task.wait(0.05)
                 end
-                hum:ChangeState(Enum.HumanoidStateType.Landed)
-                pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
             else
                 hum:ChangeState(Enum.HumanoidStateType.Freefall)
             end
@@ -221,14 +220,23 @@ local function fireProximityPrompt(prompt)
     if not prompt then return end
     pcall(function()
         local oldDist = prompt.MaxActivationDistance
-        local oldLineOfSight = prompt.RequiresLineOfSight
+        local oldReq = prompt.RequiresLineOfSight
         prompt.MaxActivationDistance = 9999
         prompt.RequiresLineOfSight = false
         pcall(function() fireproximityprompt(prompt) end)
-        task.wait(0.5)
+        task.wait(0.3)
         prompt.MaxActivationDistance = oldDist
-        prompt.RequiresLineOfSight = oldLineOfSight
+        prompt.RequiresLineOfSight = oldReq
     end)
+end
+
+local function waitAndFirePrompt(prompt, attempts)
+    attempts = attempts or 5
+    for i = 1, attempts do
+        if not prompt or not prompt.Parent then break end
+        fireProximityPrompt(prompt)
+        task.wait(0.4)
+    end
 end
 
 local function findInWorkspace(name)
@@ -410,10 +418,41 @@ local function flyToFront(obj)
     if not frontPos then return end
     local ch = LP.Character
     if not ch or not ch:FindFirstChild("HumanoidRootPart") then return end
-    if (ch.HumanoidRootPart.Position - frontPos).Magnitude > 6 then
+    if (ch.HumanoidRootPart.Position - frontPos).Magnitude > 5 then
         flyTo(frontPos, S.AutoFarmSpeed or 300)
+        task.wait(0.3)
     end
-    task.wait(0.5)
+end
+
+local function approachAndFire(target, actionText)
+    if not target then return false end
+    local pos = getFrontPosition(target, 4)
+    if not pos then pos = getPartPosition(target) end
+    if not pos then return false end
+
+    local ch = LP.Character
+    local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+
+    -- Летим к передней стороне
+    if (hrp.Position - pos).Magnitude > 5 then
+        flyTo(pos, S.AutoFarmSpeed or 300)
+        task.wait(0.3)
+    end
+
+    -- Ищем промпт и жмём несколько раз
+    local pp = findProximityPrompt(target, actionText)
+    if not pp then pp = findProximityPrompt(target, nil) end
+    if not pp and target.Parent then
+        pp = findProximityPrompt(target.Parent, actionText)
+        if not pp then pp = findProximityPrompt(target.Parent, nil) end
+    end
+
+    if pp then
+        waitAndFirePrompt(pp, 4)
+        return true
+    end
+    return false
 end
 
 local function buyRings()
@@ -421,7 +460,7 @@ local function buyRings()
     local bought = false
     local buyTargets = {
         {"Fake Diamond Ring","Buy"}, {"Ring","Buy"}, {"Diamond","Buy"},
-        {"Buy","Fake Diamond Ring"}, {"BlackMarket","Buy"}, {"Black Market","Buy"},
+        {"BlackMarket","Buy"}, {"Black Market","Buy"},
         {"Market","Buy"}, {"Shop","Buy"}, {"Jewelry","Buy"}
     }
     for _, pair in ipairs(buyTargets) do
@@ -432,13 +471,7 @@ local function buyRings()
             if part then target = part end
         end
         if target then
-            flyToFront(target)
-            local pp = findProximityPrompt(target, pair[2])
-            if not pp and target.Parent then pp = findProximityPrompt(target.Parent, pair[2]) end
-            if pp then
-                fireProximityPrompt(pp)
-                bought = true
-            end
+            bought = approachAndFire(target, pair[2])
         end
     end
     if not bought then
@@ -466,18 +499,7 @@ local function sellGoods()
             if part then target = part end
         end
         if target then
-            flyToFront(target)
-            task.wait(0.3)
-            local pp = findProximityPrompt(target, "sell")
-            if not pp then pp = findProximityPrompt(target, nil) end
-            if not pp and target.Parent then
-                pp = findProximityPrompt(target.Parent, "sell")
-                if not pp then pp = findProximityPrompt(target.Parent, nil) end
-            end
-            if pp then
-                fireProximityPrompt(pp)
-                sold = true
-            end
+            sold = approachAndFire(target, "sell")
         end
     end
     if not sold then
@@ -488,7 +510,7 @@ local function sellGoods()
             if par then
                 flyToFront(par)
                 task.wait(0.3)
-                fireProximityPrompt(pp)
+                waitAndFirePrompt(pp, 4)
                 sold = true
             end
         end
@@ -534,11 +556,9 @@ local function launderMoney()
                 if not frontPos then frontPos = getPartPosition(par) end
                 if frontPos then
                     flyTo(frontPos, S.AutoFarmSpeed or 300)
-                    task.wait(0.5)
+                    task.wait(0.3)
                 end
-                fireProximityPrompt(pp)
-                task.wait(0.5)
-                fireProximityPrompt(pp)
+                waitAndFirePrompt(pp, 4)
                 done = true
             end
         end
@@ -554,26 +574,7 @@ local function launderMoney()
             if done then break end
             local obj = findInWorkspace(ln)
             if obj then
-                local frontPos = getFrontPosition(obj, 4)
-                if not frontPos then frontPos = getPartPosition(obj) end
-                if frontPos then
-                    flyTo(frontPos, S.AutoFarmSpeed or 300)
-                    task.wait(0.5)
-                end
-                local pp = findProximityPrompt(obj, "launder")
-                if not pp then pp = findProximityPrompt(obj, "wash") end
-                if not pp then pp = findProximityPrompt(obj, nil) end
-                if not pp and obj.Parent then
-                    pp = findProximityPrompt(obj.Parent, "launder")
-                    if not pp then pp = findProximityPrompt(obj.Parent, "wash") end
-                    if not pp then pp = findProximityPrompt(obj.Parent, nil) end
-                end
-                if pp then
-                    fireProximityPrompt(pp)
-                    task.wait(0.5)
-                    fireProximityPrompt(pp)
-                    done = true
-                end
+                done = approachAndFire(obj, "launder") or approachAndFire(obj, "wash") or approachAndFire(obj, nil)
             end
         end
     end
@@ -619,7 +620,7 @@ local function doRingFarmCycle()
         if not SD.AutoFarmActive then return end
         setStatus("Покупка " .. i .. "/5")
         buyRings()
-        task.wait(0.6)
+        task.wait(0.5)
     end
 
     if not SD.AutoFarmActive then return end

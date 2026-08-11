@@ -124,8 +124,9 @@ local function flyTo(targetPos, speed)
     local hum = ch:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return end
 
-    local MAX_SPEED = 80
-    speed = speed or (S.AutoFarmSpeed or 60)
+    local MAX_SPEED = 200
+        
+    speed = speed or (S.AutoFarmSpeed or 200)
     if speed > MAX_SPEED then speed = MAX_SPEED end
 
     local alive = true
@@ -211,10 +212,13 @@ local function fireProximityPrompt(prompt)
     if not prompt then return end
     pcall(function()
         local oldDist = prompt.MaxActivationDistance
+        local oldLineOfSight = prompt.RequiresLineOfSight
         prompt.MaxActivationDistance = 9999
+        prompt.RequiresLineOfSight = false
         pcall(function() fireproximityprompt(prompt) end)
         task.wait(0.5)
         prompt.MaxActivationDistance = oldDist
+        prompt.RequiresLineOfSight = oldLineOfSight
     end)
 end
 
@@ -398,7 +402,7 @@ local function flyToFront(obj)
     local ch = LP.Character
     if not ch or not ch:FindFirstChild("HumanoidRootPart") then return end
     if (ch.HumanoidRootPart.Position - frontPos).Magnitude > 6 then
-        flyTo(frontPos, S.AutoFarmSpeed or 120)
+        flyTo(frontPos, S.AutoFarmSpeed or 200)
     end
     task.wait(0.5)
 end
@@ -508,38 +512,11 @@ end
 local function launderMoney()
     setStatus("Отмывка денег...")
     local done = false
-    local launderNames = {
-        "Laundromat","LAUNDROMAT","Launder","MoneyWash",
-        "Money Wash","Wash","Laundering","WashingMachine","Washing Machine"
-    }
-    for _, ln in ipairs(launderNames) do
+
+    local launderPrompts = {"Cash Drop", "Launder Cash", "Launder", "Wash"}
+    for _, pName in ipairs(launderPrompts) do
         if done then break end
-        local obj = findInWorkspace(ln)
-        if obj then
-            local frontPos = getFrontPosition(obj, 4)
-            if not frontPos then frontPos = getPartPosition(obj) end
-            if frontPos then
-                flyTo(frontPos, S.AutoFarmSpeed or 120)
-                task.wait(0.5)
-            end
-            local pp = findProximityPrompt(obj, "launder")
-            if not pp then pp = findProximityPrompt(obj, "wash") end
-            if not pp then pp = findProximityPrompt(obj, nil) end
-            if not pp and obj.Parent then
-                pp = findProximityPrompt(obj.Parent, "launder")
-                if not pp then pp = findProximityPrompt(obj.Parent, "wash") end
-                if not pp then pp = findProximityPrompt(obj.Parent, nil) end
-            end
-            if pp then
-                fireProximityPrompt(pp)
-                task.wait(0.5)
-                fireProximityPrompt(pp)
-                done = true
-            end
-        end
-    end
-    if not done then
-        local prompts = findAllPrompts("launder")
+        local prompts = findAllPrompts(pName)
         for _, pp in ipairs(prompts) do
             if done then break end
             local par = pp.Parent
@@ -547,7 +524,7 @@ local function launderMoney()
                 local frontPos = getFrontPosition(par, 4)
                 if not frontPos then frontPos = getPartPosition(par) end
                 if frontPos then
-                    flyTo(frontPos, S.AutoFarmSpeed or 120)
+                    flyTo(frontPos, S.AutoFarmSpeed or 200)
                     task.wait(0.5)
                 end
                 fireProximityPrompt(pp)
@@ -557,35 +534,53 @@ local function launderMoney()
             end
         end
     end
+
     if not done then
-        local prompts = findAllPrompts("wash")
-        for _, pp in ipairs(prompts) do
+        local launderNames = {
+            "Laundromat","LAUNDROMAT","Launder","MoneyWash",
+            "Money Wash","Wash","Laundering","WashingMachine","Washing Machine",
+            "Cash Drop", "CashDrop", "Launder Cash", "LaunderCash"
+        }
+        for _, ln in ipairs(launderNames) do
             if done then break end
-            local par = pp.Parent
-            if par then
-                local frontPos = getFrontPosition(par, 4)
-                if not frontPos then frontPos = getPartPosition(par) end
+            local obj = findInWorkspace(ln)
+            if obj then
+                local frontPos = getFrontPosition(obj, 4)
+                if not frontPos then frontPos = getPartPosition(obj) end
                 if frontPos then
-                    flyTo(frontPos, S.AutoFarmSpeed or 120)
+                    flyTo(frontPos, S.AutoFarmSpeed or 200)
                     task.wait(0.5)
                 end
-                fireProximityPrompt(pp)
-                task.wait(0.5)
-                fireProximityPrompt(pp)
-                done = true
+                local pp = findProximityPrompt(obj, "launder")
+                if not pp then pp = findProximityPrompt(obj, "wash") end
+                if not pp then pp = findProximityPrompt(obj, nil) end
+                if not pp and obj.Parent then
+                    pp = findProximityPrompt(obj.Parent, "launder")
+                    if not pp then pp = findProximityPrompt(obj.Parent, "wash") end
+                    if not pp then pp = findProximityPrompt(obj.Parent, nil) end
+                end
+                if pp then
+                    fireProximityPrompt(pp)
+                    task.wait(0.5)
+                    fireProximityPrompt(pp)
+                    done = true
+                end
             end
         end
     end
+
     if not done then
         local remotes = {"Launder","LaunderMoney","WashMoney","MoneyWash","LaunderCash"}
         for _, rn in ipairs(remotes) do
             if tryFireRemote(rn) then done = true break end
         end
     end
+
     if not done then
         local btn = findButtonInGUI("Launder") or findButtonInGUI("Wash")
         if btn then clickButton(btn) task.wait(0.5) clickButton(btn) done = true end
     end
+
     if done then
         task.wait(0.5)
         clickAllGUIButtons("launder")
@@ -607,7 +602,7 @@ local function doRingFarmCycle()
     setStatus("Лечу к магазину...")
     local marketPos = findAreaPosition({"BlackMarket","Black Market","GoodsMarket","Market","Shop","Jewelry","JewelryShop"})
     if marketPos then
-        flyTo(marketPos, S.AutoFarmSpeed or 120)
+        flyTo(marketPos, S.AutoFarmSpeed or 200)
         task.wait(0.5)
     end
 

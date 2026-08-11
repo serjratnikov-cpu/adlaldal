@@ -130,7 +130,7 @@ local function flyTo(targetPos, speed)
 
     local alive = true
     local groundTimer = 0
-    local GROUND_EVERY = 2.2
+    local GROUND_EVERY = 2.0
     local stepCount = 0
 
     local rayParams = RaycastParams.new()
@@ -176,32 +176,32 @@ local function flyTo(targetPos, speed)
         if step > MAX_STEP then step = MAX_STEP end
         if step > dist then step = dist end
 
+        -- Следующая позиция: прямо к цели
         local newPos = myPos + dir * step
 
-        -- Freefall exploit: даём поблажку античиту через состояние падения
-        if stepCount % 3 == 0 then
-            hum:ChangeState(Enum.HumanoidStateType.Freefall)
-        end
-
-        -- Касание земли каждые 2.2с чтобы сбросить AntiFly таймер
+        -- AntiFly bypass: каждые 2с прижимаемся к земле В ТОЧКЕ newPos
+        -- Никакого возврата назад - только вниз и сразу продолжаем
         if groundTimer >= GROUND_EVERY then
-            local hit = ws:Raycast(myPos + V3new(0, 10, 0), V3new(0, -150, 0), rayParams)
+            local hit = ws:Raycast(newPos + V3new(0, 10, 0), V3new(0, -150, 0), rayParams)
             if hit then
-                local savedCF = hrp.CFrame
-
-                -- Seat exploit: на долю секунды симулируем посадку
-                hrp.CFrame = CFnew(hit.Position + V3new(0, 3.0, 0), hit.Position + V3new(0, 3.0, 0) + dir)
-                hum:ChangeState(Enum.HumanoidStateType.Seated)
-                task.wait(0.05)
+                local groundY = hit.Position.Y + 3.0
+                -- Если земля близко снизу - просто опускаемся к ней
+                -- Если далеко внизу - не прыгаем, просто меняем стейт
+                if math.abs(newPos.Y - groundY) < 80 then
+                    newPos = V3new(newPos.X, groundY, newPos.Z)
+                end
                 hum:ChangeState(Enum.HumanoidStateType.Landed)
                 pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
-                task.wait(0.08)
-
-                -- Возвращаемся точно на траекторию
-                hrp.CFrame = savedCF
+            else
+                -- Земли нет (высоко в воздухе) - имитируем Freefall
                 hum:ChangeState(Enum.HumanoidStateType.Freefall)
             end
             groundTimer = 0
+        else
+            -- Между касаниями - Freefall чтобы не триггерить AntiFly
+            if stepCount % 4 == 0 then
+                hum:ChangeState(Enum.HumanoidStateType.Freefall)
+            end
         end
 
         hrp.CFrame = CFnew(newPos, newPos + dir)

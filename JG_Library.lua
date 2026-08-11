@@ -143,20 +143,21 @@ local Themes = {
 UI.Themes = Themes
 
 local function buildCustomTheme()
-    Themes["CUSTOM"].Bg=Color3.fromRGB(S.CustomThemeBgR,S.CustomThemeBgG,S.CustomThemeBgB)
-    Themes["CUSTOM"].Sidebar=Color3.fromRGB(S.CustomThemeSidebarR,S.CustomThemeSidebarG,S.CustomThemeSidebarB)
-    Themes["CUSTOM"].Card=Color3.fromRGB(S.CustomThemeCardR,S.CustomThemeCardG,S.CustomThemeCardB)
-    Themes["CUSTOM"].CardHover=Color3.fromRGB(math.min(S.CustomThemeCardR+8,255),math.min(S.CustomThemeCardG+8,255),math.min(S.CustomThemeCardB+8,255))
-    Themes["CUSTOM"].Accent=Color3.fromRGB(S.CustomThemeAccentR,S.CustomThemeAccentG,S.CustomThemeAccentB)
-    Themes["CUSTOM"].Text=Color3.fromRGB(S.CustomThemeTextR,S.CustomThemeTextG,S.CustomThemeTextB)
-    Themes["CUSTOM"].TextDim=Color3.fromRGB(math.floor(S.CustomThemeTextR*0.6),math.floor(S.CustomThemeTextG*0.6),math.floor(S.CustomThemeTextB*0.6))
-    Themes["CUSTOM"].TextMuted=Color3.fromRGB(math.floor(S.CustomThemeTextR*0.38),math.floor(S.CustomThemeTextG*0.38),math.floor(S.CustomThemeTextB*0.38))
-    Themes["CUSTOM"].Border=Color3.fromRGB(math.min(S.CustomThemeCardR+13,255),math.min(S.CustomThemeCardG+13,255),math.min(S.CustomThemeCardB+14,255))
-    Themes["CUSTOM"].SliderBg=Color3.fromRGB(math.min(S.CustomThemeCardR+18,255),math.min(S.CustomThemeCardG+18,255),math.min(S.CustomThemeCardB+20,255))
-    Themes["CUSTOM"].Toggle=Color3.fromRGB(math.min(S.CustomThemeCardR+23,255),math.min(S.CustomThemeCardG+23,255),math.min(S.CustomThemeCardB+27,255))
+    if not S then return end
+    Themes["CUSTOM"].Bg=Color3.fromRGB(S.CustomThemeBgR or 20,S.CustomThemeBgG or 20,S.CustomThemeBgB or 24)
+    Themes["CUSTOM"].Sidebar=Color3.fromRGB(S.CustomThemeSidebarR or 26,S.CustomThemeSidebarG or 26,S.CustomThemeSidebarB or 30)
+    Themes["CUSTOM"].Card=Color3.fromRGB(S.CustomThemeCardR or 32,S.CustomThemeCardG or 32,S.CustomThemeCardB or 38)
+    Themes["CUSTOM"].CardHover=Color3.fromRGB(math.min((S.CustomThemeCardR or 32)+8,255),math.min((S.CustomThemeCardG or 32)+8,255),math.min((S.CustomThemeCardB or 38)+8,255))
+    Themes["CUSTOM"].Accent=Color3.fromRGB(S.CustomThemeAccentR or 255,S.CustomThemeAccentG or 213,S.CustomThemeAccentB or 0)
+    Themes["CUSTOM"].Text=Color3.fromRGB(S.CustomThemeTextR or 235,S.CustomThemeTextG or 235,S.CustomThemeTextB or 240)
+    Themes["CUSTOM"].TextDim=Color3.fromRGB(math.floor((S.CustomThemeTextR or 235)*0.6),math.floor((S.CustomThemeTextG or 235)*0.6),math.floor((S.CustomThemeTextB or 240)*0.6))
+    Themes["CUSTOM"].TextMuted=Color3.fromRGB(math.floor((S.CustomThemeTextR or 235)*0.38),math.floor((S.CustomThemeTextG or 235)*0.38),math.floor((S.CustomThemeTextB or 240)*0.38))
+    Themes["CUSTOM"].Border=Color3.fromRGB(math.min((S.CustomThemeCardR or 32)+13,255),math.min((S.CustomThemeCardG or 32)+13,255),math.min((S.CustomThemeCardB or 38)+14,255))
+    Themes["CUSTOM"].SliderBg=Color3.fromRGB(math.min((S.CustomThemeCardR or 32)+18,255),math.min((S.CustomThemeCardG or 32)+18,255),math.min((S.CustomThemeCardB or 38)+20,255))
+    Themes["CUSTOM"].Toggle=Color3.fromRGB(math.min((S.CustomThemeCardR or 32)+23,255),math.min((S.CustomThemeCardG or 32)+23,255),math.min((S.CustomThemeCardB or 38)+27,255))
 end
 UI.buildCustomTheme = buildCustomTheme
-buildCustomTheme()
+pcall(buildCustomTheme)
 
 local C = {
     Bg=Themes["OG BUDA"].Bg, Sidebar=Themes["OG BUDA"].Sidebar,

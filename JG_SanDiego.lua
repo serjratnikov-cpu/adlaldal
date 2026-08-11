@@ -132,6 +132,7 @@ local function flyTo(targetPos, speed)
     local GROUND_EVERY = 3.5
     local stepCount = 0
 
+    -- Raycast только для частей С коллизией
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Blacklist
     rayParams.FilterDescendantsInstances = {ch}
@@ -145,6 +146,8 @@ local function flyTo(targetPos, speed)
                         p.CanCollide = false
                     end
                 end
+                hrp.AssemblyLinearVelocity = V3new(0, 0, 0)
+                hrp.AssemblyAngularVelocity = V3new(0, 0, 0)
             end
         end)
     end)
@@ -159,12 +162,22 @@ local function flyTo(targetPos, speed)
         end)
     end
 
-    -- Предварительный подъём перед полётом
-    local startPos = hrp.Position
-    local upPos = startPos + V3new(0, 25, 0)
-    for i = 1, 20 do
-        if not alive or not SD.AutoFarmActive then break end
-        if not hrp or not hrp.Parent then break end
+    -- Функция проверки стены С коллизией
+    local function checkWall(from, direction, dist)
+        local hit = ws:Raycast(from, direction * dist, rayParams)
+        if hit and hit.Instance then
+            -- Проверяем что у объекта включена коллизия
+            if hit.Instance.CanCollide then
+                return true
+            end
+        end
+        return false
+    end
+
+    -- Предварительный подъём
+    local upPos = hrp.Position + V3new(0, 20, 0)
+    for i = 1, 15 do
+        if not alive or not SD.AutoFarmActive or not hrp or not hrp.Parent then break end
         local cur = hrp.Position
         local d = (cur - upPos).Magnitude
         if d < 3 then break end
@@ -191,28 +204,21 @@ local function flyTo(targetPos, speed)
         groundTimer = groundTimer + dt
         stepCount = stepCount + 1
 
-        -- Обход препятствий: вперёд, вверх, влево, вправо
-        local wallFwd = ws:Raycast(myPos, dir * 10, rayParams)
-        if wallFwd then
-            -- Пробуем вверх
-            local upDir = V3new(dir.X, 0.8, dir.Z).Unit
-            local wallUp = ws:Raycast(myPos, upDir * 10, rayParams)
-            if not wallUp then
+        -- Обход только стен С коллизией
+        local hasWallFwd = checkWall(myPos, dir, 12)
+        if hasWallFwd then
+            local upDir = V3new(dir.X, 1.0, dir.Z).Unit
+            if not checkWall(myPos, upDir, 12) then
                 dir = upDir
             else
-                -- Пробуем вправо
-                local rightDir = V3new(dir.Z, 0, -dir.X).Unit
-                local wallRight = ws:Raycast(myPos, rightDir * 10, rayParams)
-                if not wallRight then
-                    dir = V3new(rightDir.X, 0.4, rightDir.Z).Unit
+                local rightDir = V3new(dir.Z, 0.3, -dir.X).Unit
+                if not checkWall(myPos, rightDir, 12) then
+                    dir = rightDir
                 else
-                    -- Пробуем влево
-                    local leftDir = V3new(-dir.Z, 0, dir.X).Unit
-                    local wallLeft = ws:Raycast(myPos, leftDir * 10, rayParams)
-                    if not wallLeft then
-                        dir = V3new(leftDir.X, 0.4, leftDir.Z).Unit
+                    local leftDir = V3new(-dir.Z, 0.3, dir.X).Unit
+                    if not checkWall(myPos, leftDir, 12) then
+                        dir = leftDir
                     else
-                        -- Всё заблокировано — идём вверх принудительно
                         dir = V3new(0, 1, 0)
                     end
                 end
@@ -220,8 +226,7 @@ local function flyTo(targetPos, speed)
         end
 
         local step = speed * dt
-        local maxStep = math.min(totalDist, 60)
-        if step > maxStep then step = maxStep end
+        if step > totalDist then step = totalDist end
 
         local newPos = myPos + dir * step
 
@@ -229,19 +234,20 @@ local function flyTo(targetPos, speed)
             local hit = ws:Raycast(myPos + V3new(0, 10, 0), V3new(0, -150, 0), rayParams)
             if hit then
                 local groundY = hit.Position.Y + 3.0
-                if math.abs(myPos.Y - groundY) < 60 then
+                if math.abs(myPos.Y - groundY) < 80 then
                     local tempPos = V3new(myPos.X, groundY, myPos.Z)
-                    hrp.CFrame = CFnew(tempPos, tempPos + (targetPos - tempPos).Unit)
+                    hrp.CFrame = CFnew(tempPos, tempPos + dir)
                     hum:ChangeState(Enum.HumanoidStateType.Landed)
                     pcall(function() hrp.AssemblyLinearVelocity = V3new(0,0,0) end)
-                    task.wait(0.05)
+                    task.wait(0.06)
+                    hum:ChangeState(Enum.HumanoidStateType.Freefall)
                 end
             else
                 hum:ChangeState(Enum.HumanoidStateType.Freefall)
             end
             groundTimer = 0
         else
-            if stepCount % 4 == 0 then
+            if stepCount % 5 == 0 then
                 hum:ChangeState(Enum.HumanoidStateType.Freefall)
             end
         end

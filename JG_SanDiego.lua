@@ -1,4 +1,3 @@
-```lua
 return function(S, LP, Players, ws, RS, Camera, Color3RGB, V3new, CFnew, mathhuge, pcall, task, table_insert, string_find, string_lower, tostring, mathfloor)
 
 local SD = {}
@@ -781,4 +780,3 @@ end
 
 return SD
 end
-```

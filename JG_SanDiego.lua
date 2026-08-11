@@ -124,14 +124,15 @@ local function flyTo(targetPos, speed)
     local hum = ch:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return end
 
-    local MAX_SPEED = 200
-        
-    speed = speed or (S.AutoFarmSpeed or 200)
+    speed = speed or (S.AutoFarmSpeed or 300)
+    local MAX_SPEED = 300
     if speed > MAX_SPEED then speed = MAX_SPEED end
 
+    -- Разбиваем путь на чанки по 60 studs чтобы античит не видел прыжок
+    local MAX_CHUNK = 60
     local alive = true
     local groundTimer = 0
-    local GROUND_EVERY = 2.0
+    local GROUND_EVERY = 3.5
     local stepCount = 0
 
     local rayParams = RaycastParams.new()
@@ -165,18 +166,26 @@ local function flyTo(targetPos, speed)
         if not ch or not ch.Parent or not hrp or not hrp.Parent then break end
 
         local myPos = hrp.Position
-        local dist = (myPos - targetPos).Magnitude
-        if dist < 6 then break end
+        local totalDist = (myPos - targetPos).Magnitude
+        if totalDist < 6 then break end
 
-        local dir = (targetPos - myPos).Unit
+        -- Промежуточная цель: не дальше MAX_CHUNK за раз
+        local chunkTarget = targetPos
+        if totalDist > MAX_CHUNK then
+            local dir60 = (targetPos - myPos).Unit
+            chunkTarget = myPos + dir60 * MAX_CHUNK
+        end
+
+        local dir = (chunkTarget - myPos).Unit
+        local chunkDist = (myPos - chunkTarget).Magnitude
+
         local dt = task.wait()
-        if dt > 0.1 then dt = 0.1 end
+        if dt > 0.05 then dt = 0.05 end
         groundTimer = groundTimer + dt
         stepCount = stepCount + 1
 
         local step = speed * dt
-        if step > 8 then step = 8 end
-        if step > dist then step = dist end
+        if step > chunkDist then step = chunkDist end
 
         local newPos = myPos + dir * step
 
@@ -199,7 +208,7 @@ local function flyTo(targetPos, speed)
             end
         end
 
-        hrp.CFrame = CFnew(newPos, newPos + dir)
+        hrp.CFrame = CFnew(newPos, newPos + (targetPos - newPos).Unit)
         pcall(function() hrp.Velocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyAngularVelocity = V3new(0, 0, 0) end)
@@ -402,7 +411,7 @@ local function flyToFront(obj)
     local ch = LP.Character
     if not ch or not ch:FindFirstChild("HumanoidRootPart") then return end
     if (ch.HumanoidRootPart.Position - frontPos).Magnitude > 6 then
-        flyTo(frontPos, S.AutoFarmSpeed or 200)
+        flyTo(frontPos, S.AutoFarmSpeed or 300)
     end
     task.wait(0.5)
 end
@@ -513,7 +522,7 @@ local function launderMoney()
     setStatus("Отмывка денег...")
     local done = false
 
-    local launderPrompts = {"Cash Drop", "Launder Cash", "Launder", "Wash"}
+    local launderPrompts = {"Cash Drop","Launder Cash","Launder","Wash"}
     for _, pName in ipairs(launderPrompts) do
         if done then break end
         local prompts = findAllPrompts(pName)
@@ -524,7 +533,7 @@ local function launderMoney()
                 local frontPos = getFrontPosition(par, 4)
                 if not frontPos then frontPos = getPartPosition(par) end
                 if frontPos then
-                    flyTo(frontPos, S.AutoFarmSpeed or 200)
+                    flyTo(frontPos, S.AutoFarmSpeed or 300)
                     task.wait(0.5)
                 end
                 fireProximityPrompt(pp)
@@ -539,7 +548,7 @@ local function launderMoney()
         local launderNames = {
             "Laundromat","LAUNDROMAT","Launder","MoneyWash",
             "Money Wash","Wash","Laundering","WashingMachine","Washing Machine",
-            "Cash Drop", "CashDrop", "Launder Cash", "LaunderCash"
+            "Cash Drop","CashDrop","Launder Cash","LaunderCash"
         }
         for _, ln in ipairs(launderNames) do
             if done then break end
@@ -548,7 +557,7 @@ local function launderMoney()
                 local frontPos = getFrontPosition(obj, 4)
                 if not frontPos then frontPos = getPartPosition(obj) end
                 if frontPos then
-                    flyTo(frontPos, S.AutoFarmSpeed or 200)
+                    flyTo(frontPos, S.AutoFarmSpeed or 300)
                     task.wait(0.5)
                 end
                 local pp = findProximityPrompt(obj, "launder")
@@ -602,7 +611,7 @@ local function doRingFarmCycle()
     setStatus("Лечу к магазину...")
     local marketPos = findAreaPosition({"BlackMarket","Black Market","GoodsMarket","Market","Shop","Jewelry","JewelryShop"})
     if marketPos then
-        flyTo(marketPos, S.AutoFarmSpeed or 200)
+        flyTo(marketPos, S.AutoFarmSpeed or 300)
         task.wait(0.5)
     end
 

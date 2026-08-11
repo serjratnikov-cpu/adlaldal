@@ -130,7 +130,6 @@ local function flyTo(targetPos, speed)
     local stepCount = 0
     local flyTime = 0
     local isPaused = false
-    local teleportStep = 0
     
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
@@ -164,21 +163,20 @@ local function flyTo(targetPos, speed)
         local dist = (myPos - targetPos).Magnitude
         if dist < 6 then break end
         
-        if not isPaused and flyTime >= 3.5 then
+        if not isPaused and flyTime >= 3.8 then
             isPaused = true
             hum:ChangeState(Enum.HumanoidStateType.Landed)
             pcall(function() hrp.Velocity = V3new(0, -2, 0) end)
-            task.wait(0.15)
+            task.wait(0.2)
             hum:ChangeState(Enum.HumanoidStateType.Jumping)
             flyTime = 0
             isPaused = false
-            teleportStep = 0
         end
         
         local dir = (targetPos - myPos).Unit
         local dt = task.wait()
         local step = speed * dt
-        if step > 28 then step = 28 end
+        if step > 15 then step = 15 end
         if step > dist then step = dist end
         
         local newPos = myPos + dir * step
@@ -186,24 +184,22 @@ local function flyTo(targetPos, speed)
         local ray = RaycastParams.new()
         ray.FilterType = Enum.RaycastFilterType.Blacklist
         ray.FilterDescendantsInstances = {ch}
-        local hit = ws:Raycast(newPos + V3new(0, 5, 0), V3new(0, -10, 0), ray)
-        if hit and (newPos.Y - hit.Position.Y) > 6 then
-            newPos = V3new(newPos.X, hit.Position.Y + 2.5, newPos.Z)
+        local hit = ws:Raycast(newPos + V3new(0, 5, 0), V3new(0, -12, 0), ray)
+        
+        if hit then
+            local groundY = hit.Position.Y
+            if newPos.Y > groundY + 4 then
+                newPos = V3new(newPos.X, groundY + 2.5, newPos.Z)
+            elseif newPos.Y < groundY + 1.5 then
+                newPos = V3new(newPos.X, groundY + 2.5, newPos.Z)
+            end
         end
         
-        if stepCount % 4 == 0 then
+        if stepCount % 5 == 0 then
             hum:ChangeState(Enum.HumanoidStateType.Jumping)
         end
         
-        if stepCount % 15 == 0 then
-            teleportStep = teleportStep + 1
-            hrp.CFrame = CFnew(newPos, newPos + dir)
-            pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
-            pcall(function() hrp.AssemblyAngularVelocity = V3new(0, 0, 0) end)
-        else
-            hrp.CFrame = CFnew(newPos, newPos + dir)
-        end
-        
+        hrp.CFrame = CFnew(newPos, newPos + dir)
         pcall(function() hrp.Velocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyAngularVelocity = V3new(0, 0, 0) end)

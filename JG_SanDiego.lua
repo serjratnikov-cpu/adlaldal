@@ -130,6 +130,7 @@ local function flyTo(targetPos, speed)
     local stepCount = 0
     local flyTime = 0
     local isPaused = false
+    local teleportStep = 0
     
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
@@ -163,20 +164,21 @@ local function flyTo(targetPos, speed)
         local dist = (myPos - targetPos).Magnitude
         if dist < 6 then break end
         
-        if not isPaused and flyTime >= 3.8 then
+        if not isPaused and flyTime >= 3.5 then
             isPaused = true
             hum:ChangeState(Enum.HumanoidStateType.Landed)
             pcall(function() hrp.Velocity = V3new(0, -2, 0) end)
-            task.wait(0.2)
+            task.wait(0.15)
             hum:ChangeState(Enum.HumanoidStateType.Jumping)
             flyTime = 0
             isPaused = false
+            teleportStep = 0
         end
         
         local dir = (targetPos - myPos).Unit
         local dt = task.wait()
         local step = speed * dt
-        if step > 35 then step = 35 end
+        if step > 28 then step = 28 end
         if step > dist then step = dist end
         
         local newPos = myPos + dir * step
@@ -189,11 +191,19 @@ local function flyTo(targetPos, speed)
             newPos = V3new(newPos.X, hit.Position.Y + 2.5, newPos.Z)
         end
         
-        if stepCount % 3 == 0 then
+        if stepCount % 4 == 0 then
             hum:ChangeState(Enum.HumanoidStateType.Jumping)
         end
         
-        hrp.CFrame = CFnew(newPos, newPos + dir)
+        if stepCount % 15 == 0 then
+            teleportStep = teleportStep + 1
+            hrp.CFrame = CFnew(newPos, newPos + dir)
+            pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
+            pcall(function() hrp.AssemblyAngularVelocity = V3new(0, 0, 0) end)
+        else
+            hrp.CFrame = CFnew(newPos, newPos + dir)
+        end
+        
         pcall(function() hrp.Velocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyAngularVelocity = V3new(0, 0, 0) end)

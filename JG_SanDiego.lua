@@ -193,6 +193,17 @@ local function findInWorkspace(name)
     return nil
 end
 
+local function findAllInWorkspace(name)
+    local nameLow = name:lower()
+    local results = {}
+    for _, child in ipairs(ws:GetDescendants()) do
+        if child.Name == name or string_find(child.Name:lower(), nameLow) then
+            table_insert(results, child)
+        end
+    end
+    return results
+end
+
 local function findNPC(name)
     local nameLow = name:lower()
     for _, child in ipairs(ws:GetDescendants()) do
@@ -227,6 +238,42 @@ local function findButtonInGUI(buttonName)
             if vis then
                 if gui.Name and string_find(gui.Name:lower(), bLow) then return gui end
                 if gui:IsA("TextButton") and gui.Text and string_find(gui.Text:lower(), bLow) then return gui end
+            end
+        end
+    end
+    return nil
+end
+
+local function findAllButtonsInGUI(buttonName)
+    local pg = LP.PlayerGui
+    if not pg then return {} end
+    local bLow = buttonName:lower()
+    local results = {}
+    for _, gui in ipairs(pg:GetDescendants()) do
+        if (gui:IsA("TextButton") or gui:IsA("ImageButton")) then
+            local vis = true
+            pcall(function() vis = gui.Visible end)
+            if vis then
+                local match = false
+                if gui.Name and string_find(gui.Name:lower(), bLow) then match = true end
+                if gui:IsA("TextButton") and gui.Text and string_find(gui.Text:lower(), bLow) then match = true end
+                if match then table_insert(results, gui) end
+            end
+        end
+    end
+    return results
+end
+
+local function findTextLabelInGUI(text)
+    local pg = LP.PlayerGui
+    if not pg then return nil end
+    local tLow = text:lower()
+    for _, gui in ipairs(pg:GetDescendants()) do
+        if gui:IsA("TextLabel") or gui:IsA("TextButton") then
+            local vis = true
+            pcall(function() vis = gui.Visible end)
+            if vis and gui.Text and string_find(gui.Text:lower(), tLow) then
+                return gui
             end
         end
     end
@@ -271,6 +318,12 @@ local function tryFireRemote(name, ...)
             return true
         end
     end
+    for _, child in ipairs(rs:GetDescendants()) do
+        if child:IsA("RemoteFunction") and (child.Name == name or string_find(child.Name:lower(), name:lower())) then
+            pcall(function() child:InvokeServer(table.unpack(args, 1, args.n)) end)
+            return true
+        end
+    end
     return false
 end
 
@@ -288,15 +341,72 @@ local function getPartPosition(obj)
     return nil
 end
 
-local function findAreaPosition(names)
+local function findNearestFromList(names)
+    local ch = LP.Character
+    if not ch or not ch:FindFirstChild("HumanoidRootPart") then return nil, nil end
+    local myPos = ch.HumanoidRootPart.Position
+    local nearestObj = nil
+    local nearestPos = nil
+    local nearestDist = mathhuge
     for _, name in ipairs(names) do
-        local found = findInWorkspace(name)
-        if found then
-            local pos = getPartPosition(found)
-            if pos then return pos end
+        local all = findAllInWorkspace(name)
+        for _, child in ipairs(all) do
+            local pos = getPartPosition(child)
+            if pos then
+                local d = (myPos - pos).Magnitude
+                if d < nearestDist then
+                    nearestDist = d
+                    nearestObj = child
+                    nearestPos = pos
+                end
+            end
         end
     end
-    return nil
+    return nearestObj, nearestPos
+end
+
+local function findNearestNPC(names)
+    local ch = LP.Character
+    if not ch or not ch:FindFirstChild("HumanoidRootPart") then return nil, nil end
+    local myPos = ch.HumanoidRootPart.Position
+    local nearestObj = nil
+    local nearestPos = nil
+    local nearestDist = mathhuge
+    for _, name in ipairs(names) do
+        local nameLow = name:lower()
+        for _, child in ipairs(ws:GetDescendants()) do
+            if child:IsA("Model") and (child.Name == name or string_find(child.Name:lower(), nameLow)) then
+                if child:FindFirstChildOfClass("Humanoid") then
+                    local pos = getPartPosition(child)
+                    if pos then
+                        local d = (myPos - pos).Magnitude
+                        if d < nearestDist then
+                            nearestDist = d
+                            nearestObj = child
+                            nearestPos = pos
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nearestObj, nearestPos
+end
+
+local function flyToObj(obj, extraY)
+    extraY = extraY or 3
+    local pos = getPartPosition(obj)
+    if pos then
+        flyTo(pos + V3new(0, extraY, 0), S.AutoFarmSpeed or 120)
+        task.wait(0.3)
+    end
+end
+
+local function flyToPos(pos, extraY)
+    if not pos then return end
+    extraY = extraY or 3
+    flyTo(pos + V3new(0, extraY, 0), S.AutoFarmSpeed or 120)
+    task.wait(0.3)
 end
 
 local function interactPromptNear(name, actionText)
@@ -315,7 +425,7 @@ local function interactPromptNear(name, actionText)
                 local pp = findProximityPrompt(part, actionText) or findProximityPrompt(part.Parent, actionText)
                 if pp then
                     local pos = part.Position
-                    if (hrp.Position - pos).Magnitude > 12 then
+                    if (hrp.Position - pos).Magnitude > 8 then
                         flyTo(pos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
                         task.wait(0.5)
                     end
@@ -329,7 +439,7 @@ local function interactPromptNear(name, actionText)
         local pp = findProximityPrompt(target, actionText)
         if pp then
             local pos = getPartPosition(target)
-            if pos and (hrp.Position - pos).Magnitude > 12 then
+            if pos and (hrp.Position - pos).Magnitude > 8 then
                 flyTo(pos + V3new(0, 3, 3), S.AutoFarmSpeed or 120)
                 task.wait(0.5)
             end
@@ -340,105 +450,421 @@ local function interactPromptNear(name, actionText)
     return false
 end
 
+local function waitForGUIButton(buttonName, timeout)
+    timeout = timeout or 8
+    local start = tick()
+    while tick() - start < timeout and SD.AutoFarmActive do
+        local btn = findButtonInGUI(buttonName)
+        if btn then return btn end
+        task.wait(0.3)
+    end
+    return nil
+end
+
+local function waitForGUIText(text, timeout)
+    timeout = timeout or 8
+    local start = tick()
+    while tick() - start < timeout and SD.AutoFarmActive do
+        local lbl = findTextLabelInGUI(text)
+        if lbl then return lbl end
+        task.wait(0.3)
+    end
+    return nil
+end
+
+-- === ПОКУПКА КОЛЕЦ В BLACK MARKET ===
 local function buyRings()
-    setStatus("Покупка колец...")
+    if not SD.AutoFarmActive then return false end
+    setStatus("Лечу к Black Market...")
+
+    local marketObj, marketPos = findNearestFromList({
+        "BlackMarket","Black Market","GoodsMarket","Goods Market",
+        "Black Market Goods","BlackMarketGoods","Market","Goods",
+        "Shop","Jewelry","JewelryShop"
+    })
+    if marketPos then
+        flyToPos(marketPos, 3)
+    end
+
     local bought = false
-    local buyTargets = {
-        {"Fake Diamond Ring","Buy"}, {"Ring","Buy"}, {"Diamond","Buy"},
-        {"Buy","Fake Diamond Ring"}, {"BlackMarket","Buy"}, {"Black Market","Buy"},
-        {"Market","Buy"}, {"Shop","Buy"}, {"Jewelry","Buy"}
-    }
-    for _, pair in ipairs(buyTargets) do
-        if bought then break end
-        bought = interactPromptNear(pair[1], pair[2])
-    end
-    if not bought then
-        local remotes = {"BuyRing","PurchaseRing","BuyItem","Purchase","BuyGoods","Buy"}
-        for _, rn in ipairs(remotes) do
-            if tryFireRemote(rn, "Fake Diamond Ring") then bought = true break end
+    for attempt = 1, 8 do
+        if not SD.AutoFarmActive then return false end
+        setStatus("Покупка колец... (" .. attempt .. ")")
+
+        local promptDone = false
+        local buyTargets = {
+            {"Fake Diamond Ring","Buy"},{"Ring","Buy"},{"Diamond","Buy"},
+            {"Black Market Goods","Buy"},{"BlackMarket","Buy"},
+            {"Black Market","Buy"},{"Goods","Buy"},{"Market","Buy"}
+        }
+        for _, pair in ipairs(buyTargets) do
+            if promptDone then break end
+            promptDone = interactPromptNear(pair[1], pair[2])
         end
+
+        task.wait(0.5)
+
+        local ringBtn = findButtonInGUI("Fake Diamond Ring")
+            or findButtonInGUI("Diamond Ring")
+            or findButtonInGUI("Ring")
+        if ringBtn then
+            clickButton(ringBtn)
+            task.wait(0.3)
+            bought = true
+        end
+
+        local buyBtn = findButtonInGUI("Buy")
+            or findButtonInGUI("Purchase")
+        if buyBtn then
+            clickButton(buyBtn)
+            task.wait(0.3)
+            bought = true
+        end
+
+        if not bought then
+            local remotes = {"BuyRing","PurchaseRing","BuyItem","Purchase","BuyGoods","Buy"}
+            for _, rn in ipairs(remotes) do
+                if tryFireRemote(rn, "Fake Diamond Ring") then bought = true break end
+                if tryFireRemote(rn, "FakeDiamondRing") then bought = true break end
+            end
+        end
+
+        if bought then break end
+        task.wait(0.5)
     end
-    if not bought then
-        local btn = findButtonInGUI("Buy") or findButtonInGUI("Purchase")
-        if btn then clickButton(btn) bought = true end
-    end
+
     return bought
 end
 
+-- === СПАВН МАШИНЫ Tayora Cambria ===
+local function spawnVehicle()
+    if not SD.AutoFarmActive then return false end
+    setStatus("Лечу к Vehicle Spawner...")
+
+    local spawnerObj, spawnerPos = findNearestFromList({
+        "VehicleSpawner","Vehicle Spawner","SpawnVehicle","Spawn Vehicle",
+        "VehicleSpawn","CarSpawner","Car Spawner","Tablet",
+        "VehiclePad","SpawnPad","Garage","CivilianGarage"
+    })
+
+    if not spawnerPos then
+        for _, desc in ipairs(ws:GetDescendants()) do
+            if desc:IsA("ProximityPrompt") then
+                local at = desc.ActionText or ""
+                local ot = desc.ObjectText or ""
+                local atL = at:lower()
+                local otL = ot:lower()
+                if string_find(atL, "spawn") or string_find(atL, "vehicle")
+                    or string_find(otL, "spawn") or string_find(otL, "vehicle") then
+                    local par = desc.Parent
+                    if par then
+                        spawnerPos = getPartPosition(par)
+                        spawnerObj = par
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    if spawnerPos then
+        flyToPos(spawnerPos, 3)
+    end
+
+    task.wait(0.5)
+
+    local promptFired = false
+    if spawnerObj then
+        local pp = findProximityPrompt(spawnerObj, "spawn")
+            or findProximityPrompt(spawnerObj, "vehicle")
+            or findProximityPrompt(spawnerObj, nil)
+        if pp then
+            fireProximityPrompt(pp)
+            promptFired = true
+        end
+        if not promptFired and spawnerObj.Parent then
+            pp = findProximityPrompt(spawnerObj.Parent, "spawn")
+                or findProximityPrompt(spawnerObj.Parent, "vehicle")
+                or findProximityPrompt(spawnerObj.Parent, nil)
+            if pp then
+                fireProximityPrompt(pp)
+                promptFired = true
+            end
+        end
+    end
+
+    if not promptFired then
+        local spawnNames = {
+            {"VehicleSpawner","Spawn"},{"Vehicle Spawner","Spawn"},
+            {"SpawnVehicle",nil},{"Spawn Vehicle",nil},
+            {"Tablet","Spawn"},{"Garage","Spawn"}
+        }
+        for _, pair in ipairs(spawnNames) do
+            if promptFired then break end
+            promptFired = interactPromptNear(pair[1], pair[2])
+        end
+    end
+
+    task.wait(1)
+    setStatus("Выбираю Tayora Cambria...")
+
+    local carSelected = false
+    for attempt = 1, 15 do
+        if not SD.AutoFarmActive then return false end
+        if carSelected then break end
+
+        local carNames = {
+            "Tayora Cambria","TayoraCambria","Tayora","Cambria",
+            "tayora cambria","tayoracambria"
+        }
+        for _, cName in ipairs(carNames) do
+            local btn = findButtonInGUI(cName)
+            if btn then
+                clickButton(btn)
+                task.wait(0.3)
+                clickButton(btn)
+                carSelected = true
+                setStatus("Выбрано: " .. cName)
+                break
+            end
+        end
+
+        if not carSelected then
+            local lbl = findTextLabelInGUI("Tayora")
+                or findTextLabelInGUI("Cambria")
+            if lbl then
+                local parent = lbl.Parent
+                if parent then
+                    if parent:IsA("TextButton") or parent:IsA("ImageButton") then
+                        clickButton(parent)
+                        carSelected = true
+                    else
+                        for _, child in ipairs(parent:GetChildren()) do
+                            if child:IsA("TextButton") or child:IsA("ImageButton") then
+                                clickButton(child)
+                                carSelected = true
+                                break
+                            end
+                        end
+                        if not carSelected then
+                            for _, child in ipairs(parent:GetDescendants()) do
+                                if child:IsA("TextButton") or child:IsA("ImageButton") then
+                                    clickButton(child)
+                                    carSelected = true
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        if not carSelected then
+            task.wait(0.5)
+        end
+    end
+
+    task.wait(0.5)
+    setStatus("Нажимаю Spawn...")
+
+    local spawned = false
+    for attempt = 1, 10 do
+        if not SD.AutoFarmActive then return false end
+        if spawned then break end
+
+        local spawnBtnNames = {"Spawn","spawn","SpawnVehicle","Spawn Vehicle","Confirm","Select","OK"}
+        for _, sName in ipairs(spawnBtnNames) do
+            local btn = findButtonInGUI(sName)
+            if btn then
+                clickButton(btn)
+                task.wait(0.2)
+                clickButton(btn)
+                spawned = true
+                setStatus("Машина заспавнена!")
+                break
+            end
+        end
+
+        if not spawned then
+            tryFireRemote("SpawnVehicle", "Tayora Cambria")
+            tryFireRemote("SpawnVehicle", "TayoraCambria")
+            tryFireRemote("Spawn", "Tayora Cambria")
+            task.wait(0.5)
+        end
+    end
+
+    task.wait(1)
+    return spawned or carSelected
+end
+
+-- === ПРОДАЖА У БЛИЖАЙШЕГО ПРОДАВЦА ===
 local function sellGoods()
-    setStatus("Продажа товаров...")
+    if not SD.AutoFarmActive then return false end
+    setStatus("Лечу к продавцу...")
+
+    local sellerObj, sellerPos = findNearestNPC({
+        "Smuggled Goods Seller","Smuggler","GoodsSeller","Goods Seller",
+        "Garage Smuggler","GarageSmuggler","Seller"
+    })
+
+    if not sellerPos then
+        local _, altPos = findNearestFromList({
+            "Smuggled Goods Seller","SmugGoodsSeller","GoodsSeller",
+            "Garage Smuggler","GarageSmuggler","Seller","Sell",
+            "Autoshop","AutoShop","ParkingGarage"
+        })
+        sellerPos = altPos
+    end
+
+    if sellerPos then
+        flyToPos(sellerPos, 3)
+    end
+
+    task.wait(0.5)
+
     local sold = false
     local sellTargets = {
-        {"Sell",nil}, {"Smuggled Goods Seller","Sell"},
-        {"Seller","Sell"}, {"Goods","Sell"}
+        {"Smuggled Goods Seller","Sell"},{"Garage Smuggler","Sell"},
+        {"GoodsSeller","Sell"},{"Seller","Sell"},{"Smuggler","Sell"},
+        {"Sell",nil},{"Goods","Sell"}
     }
     for _, pair in ipairs(sellTargets) do
         if sold then break end
         sold = interactPromptNear(pair[1], pair[2])
     end
+
     if not sold then
-        local remotes = {"SellGoods","Sell","SellItem","SellAll"}
+        for _, desc in ipairs(ws:GetDescendants()) do
+            if desc:IsA("ProximityPrompt") then
+                local at = (desc.ActionText or ""):lower()
+                local ot = (desc.ObjectText or ""):lower()
+                if string_find(at, "sell") or string_find(ot, "sell")
+                    or string_find(ot, "smuggl") or string_find(ot, "goods") then
+                    local par = desc.Parent
+                    if par then
+                        local pos = getPartPosition(par)
+                        if pos then
+                            flyToPos(pos, 3)
+                            task.wait(0.3)
+                        end
+                    end
+                    fireProximityPrompt(desc)
+                    sold = true
+                    break
+                end
+            end
+        end
+    end
+
+    if not sold then
+        local remotes = {"SellGoods","Sell","SellItem","SellAll","SellSmuggled"}
         for _, rn in ipairs(remotes) do
             if tryFireRemote(rn) then sold = true break end
         end
     end
+
     if not sold then
         local btn = findButtonInGUI("Sell")
         if btn then clickButton(btn) sold = true end
     end
+
     return sold
 end
 
+-- === ОТМЫВКА В LAUNDROMAT ===
 local function launderMoney()
-    setStatus("Отмывка денег...")
+    if not SD.AutoFarmActive then return false end
+    setStatus("Лечу к Laundromat...")
+
+    local launderObj, launderPos = findNearestFromList({
+        "Laundromat","LAUNDROMAT","Launder","MoneyWash","Money Wash",
+        "Wash","Laundering","LaunderCash","WashingMachine"
+    })
+
+    if launderPos then
+        flyToPos(launderPos, 3)
+    end
+
+    task.wait(0.5)
+
     local done = false
-    local targets = {{"Launder",nil},{"Money Wash",nil},{"Wash","Launder"}}
+    local targets = {
+        {"Laundromat","Launder"},{"LAUNDROMAT","Launder"},
+        {"Launder","Launder Cash"},{"Launder",nil},
+        {"Money Wash",nil},{"Wash","Launder"},
+        {"WashingMachine","Launder"},{"Washing Machine","Launder"}
+    }
     for _, pair in ipairs(targets) do
         if done then break end
         done = interactPromptNear(pair[1], pair[2])
     end
+
     if not done then
-        local remotes = {"Launder","LaunderMoney","WashMoney","MoneyWash"}
+        for _, desc in ipairs(ws:GetDescendants()) do
+            if desc:IsA("ProximityPrompt") then
+                local at = (desc.ActionText or ""):lower()
+                local ot = (desc.ObjectText or ""):lower()
+                if string_find(at, "launder") or string_find(at, "wash")
+                    or string_find(ot, "launder") or string_find(ot, "laundromat") then
+                    local par = desc.Parent
+                    if par then
+                        local pos = getPartPosition(par)
+                        if pos then
+                            flyToPos(pos, 3)
+                            task.wait(0.3)
+                        end
+                    end
+                    fireProximityPrompt(desc)
+                    done = true
+                    break
+                end
+            end
+        end
+    end
+
+    if not done then
+        local remotes = {"Launder","LaunderMoney","LaunderCash","WashMoney","MoneyWash"}
         for _, rn in ipairs(remotes) do
             if tryFireRemote(rn) then done = true break end
         end
     end
+
     return done
 end
 
+-- === ОСНОВНОЙ ЦИКЛ ФАРМА ===
 local function doRingFarmCycle()
     if not SD.AutoFarmActive then return end
-    setStatus("Кольца: лечу к магазину...")
-    local marketPos = findAreaPosition({"BlackMarket","Black Market","GoodsMarket","Market","Shop","Jewelry","JewelryShop"})
-    if marketPos then
-        flyTo(marketPos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
-        task.wait(0.5)
-    end
-    for i = 1, 5 do
-        if not SD.AutoFarmActive then return end
-        setStatus("Кольца: покупка " .. i .. "/5")
-        buyRings()
-        task.wait(0.6)
-    end
+
+    -- 1. Купить кольца
+    setStatus("Этап 1: Покупка колец...")
+    buyRings()
+    task.wait(0.5)
+
     if not SD.AutoFarmActive then return end
-    setStatus("Кольца: лечу к продавцу...")
-    local sellerPos = findAreaPosition({"Smuggled Goods Seller","GoodsSeller","Seller","SellGoods","SmuggledGoods"})
-    if sellerPos then
-        flyTo(sellerPos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
-        task.wait(0.5)
-    end
+
+    -- 2. Заспавнить машину
+    setStatus("Этап 2: Спавн машины...")
+    spawnVehicle()
+    task.wait(1)
+
+    if not SD.AutoFarmActive then return end
+
+    -- 3. Лететь к ближайшему продавцу и продать
+    setStatus("Этап 3: Продажа...")
     sellGoods()
     task.wait(0.8)
+
     if not SD.AutoFarmActive then return end
-    setStatus("Кольца: лечу отмывать...")
-    local launderPos = findAreaPosition({"Launder","MoneyWash","Money Wash","Wash","Laundering"})
-    if launderPos then
-        flyTo(launderPos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
-        task.wait(0.5)
-    end
+
+    -- 4. Лететь к Laundromat и отмыть
+    setStatus("Этап 4: Отмывка...")
     launderMoney()
     task.wait(0.8)
+
     SD.AutoFarmLaps = SD.AutoFarmLaps + 1
+    setStatus("Круг #" .. SD.AutoFarmLaps .. " завершён!")
 end
 
 function SD.startAutoFarm()

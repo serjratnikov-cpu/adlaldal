@@ -16,6 +16,7 @@ UI.prevBindKeys = {}
 UI.arrowImages = {}
 UI.arrowStates = {}
 UI.MAX_ARROWS = 20
+UI.modeBtns = {}
 
 local Themes = {
     ["OG BUDA"] = {
@@ -346,6 +347,7 @@ BLL.Size=UDim2.new(1,0,0,0) BLL.AutomaticSize=Enum.AutomaticSize.Y
 BLL.Position=UDim2.new(0,0,0,22) BLL.Font=Enum.Font.GothamMedium
 BLL.TextColor3=C.TextDim BLL.TextSize=11 BLL.TextXAlignment=Enum.TextXAlignment.Left
 BLL.TextYAlignment=Enum.TextYAlignment.Top BLL.Text="" BLL.TextWrapped=true BLL.RichText=true BLL.LineHeight=1.25
+reg(BLL,"TextColor3","TextDim")
 BLF.Visible=false makeDrag(BLF,BLF)
 UI.BLF = BLF UI.BLL = BLL UI.blScale = blScale UI.blDot = blDot
 
@@ -414,6 +416,7 @@ function UI.createTab(id, label, order)
     ic.Size=UDim2.new(1,-10,1,0) ic.Position=UDim2.new(0,10,0,0)
     ic.Font=Enum.Font.GothamBold ic.Text=label ic.TextColor3=C.TextDim ic.TextSize=11
     ic.TextXAlignment=Enum.TextXAlignment.Left ic.ZIndex=3
+    reg(ic,"TextColor3","TextDim")
     local indicator=Instance.new("Frame") indicator.Parent=Sidebar indicator.BackgroundColor3=C.Accent
     indicator.AnchorPoint=Vector2.new(0,0.5) indicator.Size=UDim2.new(0,3,0,0)
     indicator.Position=UDim2.new(0,4,0,18+(order-1)*44+18) indicator.BorderSizePixel=0 indicator.ZIndex=2
@@ -521,6 +524,7 @@ function UI.addToggle(parent, label, sKey, bKey, cb, order)
             else BindModes[bKey] = "Toggle" modeBtn.Text = "TOG" modeBtn.TextColor3 = C.TextMuted end
             saveSettings()
         end)
+        table.insert(UI.modeBtns, {btn=modeBtn, bKey=bKey})
     end
     local function setBg()
         if en then togBg.BackgroundColor3=C.Accent togCircle.Position=UDim2.new(1,-16,0.5,-7)
@@ -652,6 +656,7 @@ function UI.addDropdown(parent, label, options, sKey, cb, order)
     list.ScrollBarThickness=3 list.ScrollBarImageColor3=C.Accent list.ScrollBarImageTransparency=0.3
     list.CanvasSize=UDim2.new(0,0,0,#options*28) list.AutomaticCanvasSize=Enum.AutomaticSize.Y
     Instance.new("UICorner",list).CornerRadius=UDim.new(0,10) reg(list,"BackgroundColor3","Bg")
+    reg(list,"ScrollBarImageColor3","Accent")
     local lsSt=Instance.new("UIStroke") lsSt.Parent=list lsSt.Color=C.Border lsSt.Transparency=0.15 lsSt.Thickness=1.5
     reg(lsSt,"Color","Border")
     local lo=Instance.new("UIListLayout") lo.Parent=list lo.SortOrder=Enum.SortOrder.LayoutOrder
@@ -662,6 +667,7 @@ function UI.addDropdown(parent, label, options, sKey, cb, order)
         o.Font=Enum.Font.GothamMedium o.Text="   "..opt o.TextColor3=C.TextDim o.TextSize=11
         o.TextXAlignment=Enum.TextXAlignment.Left o.AutoButtonColor=false o.ZIndex=151
         Instance.new("UICorner",o).CornerRadius=UDim.new(0,6)
+        reg(o,"TextColor3","TextDim")
         o.MouseEnter:Connect(function() tw(o,{BackgroundTransparency=0,BackgroundColor3=C.Card,TextColor3=C.Text},0.12) end)
         o.MouseLeave:Connect(function() tw(o,{BackgroundTransparency=1,TextColor3=C.TextDim},0.12) end)
         o.MouseButton1Click:Connect(function()
@@ -711,6 +717,7 @@ function UI.addDropdownMapped(parent, label, optionPairs, sKey, cb, order)
     list.ScrollBarThickness=3 list.ScrollBarImageColor3=C.Accent list.ScrollBarImageTransparency=0.3
     list.CanvasSize=UDim2.new(0,0,0,#optionPairs*28) list.AutomaticCanvasSize=Enum.AutomaticSize.Y
     Instance.new("UICorner",list).CornerRadius=UDim.new(0,10) reg(list,"BackgroundColor3","Bg")
+    reg(list,"ScrollBarImageColor3","Accent")
     local lsSt=Instance.new("UIStroke") lsSt.Parent=list lsSt.Color=C.Border lsSt.Transparency=0.15 lsSt.Thickness=1.5
     reg(lsSt,"Color","Border")
     local lo=Instance.new("UIListLayout") lo.Parent=list lo.SortOrder=Enum.SortOrder.LayoutOrder
@@ -721,6 +728,7 @@ function UI.addDropdownMapped(parent, label, optionPairs, sKey, cb, order)
         o.Font=Enum.Font.GothamMedium o.Text="   "..pr.ru o.TextColor3=C.TextDim o.TextSize=11
         o.TextXAlignment=Enum.TextXAlignment.Left o.AutoButtonColor=false o.ZIndex=151
         Instance.new("UICorner",o).CornerRadius=UDim.new(0,6)
+        reg(o,"TextColor3","TextDim")
         o.MouseEnter:Connect(function() tw(o,{BackgroundTransparency=0,BackgroundColor3=C.Card,TextColor3=C.Text},0.12) end)
         o.MouseLeave:Connect(function() tw(o,{BackgroundTransparency=1,TextColor3=C.TextDim},0.12) end)
         o.MouseButton1Click:Connect(function()
@@ -759,6 +767,8 @@ function UI.openColorPicker(initialColor, callback)
     Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0,14)
     local mainStroke = Instance.new("UIStroke") mainStroke.Parent = mainFrame mainStroke.Color = C.Border mainStroke.Thickness = 1.5 mainStroke.Transparency = 0.2
     local titleBar = Instance.new("Frame") titleBar.Parent = mainFrame titleBar.BackgroundColor3 = C.Sidebar titleBar.BorderSizePixel = 0 titleBar.Size = UDim2.new(1,0,0,44) titleBar.Position = UDim2.new(0,0,0,0) titleBar.ZIndex = 102
+    Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0,14)
+    local titleBarMask = Instance.new("Frame") titleBarMask.Parent = titleBar titleBarMask.BackgroundColor3 = C.Sidebar titleBarMask.BorderSizePixel = 0 titleBarMask.Size = UDim2.new(1,0,0,16) titleBarMask.Position = UDim2.new(0,0,1,-16) titleBarMask.ZIndex = 102
     local titleDot = Instance.new("Frame") titleDot.Parent = titleBar titleDot.BackgroundColor3 = C.Accent titleDot.Size = UDim2.new(0,8,0,8) titleDot.Position = UDim2.new(0,16,0.5,-4) titleDot.BorderSizePixel = 0 titleDot.ZIndex = 103 Instance.new("UICorner", titleDot).CornerRadius = UDim.new(1,0)
     local titleText = Instance.new("TextLabel") titleText.Parent = titleBar titleText.BackgroundTransparency = 1 titleText.Position = UDim2.new(0,32,0,0) titleText.Size = UDim2.new(1,-40,1,0) titleText.Font = Enum.Font.GothamBold titleText.Text = "Выбор цвета" titleText.TextColor3 = C.Text titleText.TextSize = 14 titleText.TextXAlignment = Enum.TextXAlignment.Left titleText.ZIndex = 103
     makeDrag(mainFrame, titleBar)
@@ -882,6 +892,12 @@ function UI.applyTheme(name)
         end
     end)
     pcall(function()
+        for _,mb in pairs(UI.modeBtns) do
+            local cm = BindModes[mb.bKey] or "Toggle"
+            mb.btn.TextColor3 = cm == "Hold" and C.Accent or C.TextMuted
+        end
+    end)
+    pcall(function()
         if UI.currentTab then
             UI.currentTab.btn.BackgroundColor3=C.Card
             UI.currentTab.ic.TextColor3=C.Accent
@@ -907,4 +923,3 @@ N:TweenPosition(UDim2.new(0.5,-140,0,50),"Out","Back",0.55,true)
 task.delay(3.5,function() N:TweenPosition(UDim2.new(0.5,-140,0,-60),"In","Back",0.4,true,function() N:Destroy() end) end)
 
 return UI
-end

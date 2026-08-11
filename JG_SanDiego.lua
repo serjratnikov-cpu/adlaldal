@@ -116,28 +116,33 @@ local function stopCurrentFly()
     end
 end
 
-local MAX_STEP = 42
-
 local function flyTo(targetPos, speed)
     stopCurrentFly()
     local ch = LP.Character
     if not ch then return end
     local hrp = ch:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
+    local hum = ch:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
 
-    speed = speed or (S.AutoFarmSpeed or 60)
+    speed = speed or (S.AutoFarmSpeed or 120)
 
     local alive = true
-
+    local stepCount = 0
+    local flyTime = 0
+    local isPaused = false
+    
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
         pcall(function()
-            if ch and ch.Parent then
-                for _, p in pairs(ch:GetDescendants()) do
-                    if p:IsA("BasePart") then
-                        p.CanCollide = false
+            if ch and hrp then
+                for _, part in ipairs(ch:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
                     end
                 end
+                hrp.Velocity = V3new(0, 0, 0)
+                hrp.RotVelocity = V3new(0, 0, 0)
+                hum:ChangeState(Enum.HumanoidStateType.Running)
             end
         end)
     end)
@@ -145,6 +150,11 @@ local function flyTo(targetPos, speed)
     currentFlyCleanup = function()
         alive = false
         pcall(function() noclipConn:Disconnect() end)
+        pcall(function()
+            if hum then
+                hum:ChangeState(Enum.HumanoidStateType.Landed)
+            end
+        end)
     end
 
     while alive and SD.AutoFarmActive do
@@ -152,18 +162,46 @@ local function flyTo(targetPos, speed)
         local myPos = hrp.Position
         local dist = (myPos - targetPos).Magnitude
         if dist < 6 then break end
-
+        
+        if not isPaused and flyTime >= 3.8 then
+            isPaused = true
+            hum:ChangeState(Enum.HumanoidStateType.Landed)
+            pcall(function() hrp.Velocity = V3new(0, -2, 0) end)
+            task.wait(0.2)
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            flyTime = 0
+            isPaused = false
+        end
+        
         local dir = (targetPos - myPos).Unit
         local dt = task.wait()
         local step = speed * dt
-        if step > MAX_STEP then step = MAX_STEP end
+        if step > 35 then step = 35 end
         if step > dist then step = dist end
-
+        
         local newPos = myPos + dir * step
+        
+        local ray = RaycastParams.new()
+        ray.FilterType = Enum.RaycastFilterType.Blacklist
+        ray.FilterDescendantsInstances = {ch}
+        local hit = ws:Raycast(newPos + V3new(0, 5, 0), V3new(0, -10, 0), ray)
+        if hit and (newPos.Y - hit.Position.Y) > 6 then
+            newPos = V3new(newPos.X, hit.Position.Y + 2.5, newPos.Z)
+        end
+        
+        if stepCount % 3 == 0 then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+        
         hrp.CFrame = CFnew(newPos, newPos + dir)
         pcall(function() hrp.Velocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyAngularVelocity = V3new(0, 0, 0) end)
+        
+        stepCount = stepCount + 1
+        flyTime = flyTime + dt
+        
+        task.wait(0.04)
     end
 
     stopCurrentFly()

@@ -12,7 +12,6 @@ SD.AimPolice = false
 local policeHighlights = {}
 local statusLabel = nil
 local currentFlyCleanup = nil
-local flyPaused = false
 
 local TEAM_NAMES_POLICE = {
     "police","border patrol","fbi","swat","bortac","army",
@@ -115,34 +114,21 @@ local function stopCurrentFly()
         pcall(function() currentFlyCleanup() end)
         currentFlyCleanup = nil
     end
-    flyPaused = false
 end
 
-local function getGroundY(pos)
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Blacklist
-    params.FilterDescendantsInstances = {LP.Character}
-    local hit = ws:Raycast(pos + V3new(0, 10, 0), V3new(0, -25, 0), params)
-    if hit then
-        return hit.Position.Y
-    end
-    return pos.Y - 5
-end
+local MAX_STEP = 42
 
 local function flyTo(targetPos, speed)
     stopCurrentFly()
     local ch = LP.Character
     if not ch then return end
     local hrp = ch:FindFirstChild("HumanoidRootPart")
-    local hum = ch:FindFirstChildOfClass("Humanoid")
-    if not hrp or not hum then return end
+    if not hrp then return end
 
     speed = speed or (S.AutoFarmSpeed or 60)
+
     local alive = true
-    local flyTime = 0
-    local pauseTime = 0
-    local isPaused = false
-    
+
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
         pcall(function()
@@ -152,15 +138,12 @@ local function flyTo(targetPos, speed)
                         p.CanCollide = false
                     end
                 end
-                hrp.Velocity = V3new(0, 0, 0)
-                hrp.RotVelocity = V3new(0, 0, 0)
             end
         end)
     end)
 
     currentFlyCleanup = function()
         alive = false
-        flyPaused = false
         pcall(function() noclipConn:Disconnect() end)
     end
 
@@ -169,64 +152,18 @@ local function flyTo(targetPos, speed)
         local myPos = hrp.Position
         local dist = (myPos - targetPos).Magnitude
         if dist < 6 then break end
-        
-        local groundY = getGroundY(myPos)
-        local height = myPos.Y - groundY
-        
-        if not isPaused and flyTime >= 3.5 then
-            isPaused = true
-            pauseTime = 0
-            flyPaused = true
-            hum:ChangeState(Enum.HumanoidStateType.Landed)
-            pcall(function() hrp.Velocity = V3new(0, -1, 0) end)
-            pcall(function() hrp.AssemblyLinearVelocity = V3new(0, -1, 0) end)
-            task.wait(0.1)
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
-            flyTime = 0
-        end
-        
-        if isPaused then
-            pauseTime = pauseTime + 0.04
-            local groundY2 = getGroundY(myPos)
-            if myPos.Y > groundY2 + 3 then
-                pcall(function() hrp.Velocity = V3new(0, -0.5, 0) end)
-                pcall(function() hrp.AssemblyLinearVelocity = V3new(0, -0.5, 0) end)
-            end
-            if pauseTime >= 0.7 then
-                isPaused = false
-                flyPaused = false
-                pcall(function() hrp.Velocity = V3new(0, 0, 0) end)
-                pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
-            end
-            task.wait(0.04)
-            continue
-        end
-        
+
         local dir = (targetPos - myPos).Unit
         local dt = task.wait()
         local step = speed * dt
-        if step > 35 then step = 35 end
+        if step > MAX_STEP then step = MAX_STEP end
         if step > dist then step = dist end
-        
+
         local newPos = myPos + dir * step
-        
-        if newPos.Y > groundY + 8 then
-            newPos = V3new(newPos.X, groundY + 4, newPos.Z)
-        end
-        
-        if newPos.Y < groundY + 1.5 then
-            newPos = V3new(newPos.X, groundY + 2.5, newPos.Z)
-        end
-        
         hrp.CFrame = CFnew(newPos, newPos + dir)
         pcall(function() hrp.Velocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
         pcall(function() hrp.AssemblyAngularVelocity = V3new(0, 0, 0) end)
-        
-        hum:ChangeState(Enum.HumanoidStateType.Running)
-        flyTime = flyTime + dt
-        
-        task.wait(0.04)
     end
 
     stopCurrentFly()

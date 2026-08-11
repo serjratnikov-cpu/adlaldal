@@ -116,52 +116,7 @@ local function stopCurrentFly()
     end
 end
 
-local function raycastCheck(origin, direction, filterList)
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = filterList or {}
-    params.CollisionGroup = "Default"
-    local result = ws:Raycast(origin, direction, params)
-    return result
-end
-
-local function findAvoidDirection(origin, mainDir, filterList, checkDist)
-    checkDist = checkDist or 18
-    local up = V3new(0, 1, 0)
-    local right = mainDir:Cross(up)
-    if right.Magnitude < 0.01 then
-        right = mainDir:Cross(V3new(1, 0, 0))
-    end
-    right = right.Unit
-    local upDir = mainDir:Cross(right).Unit
-
-    local tryDirs = {
-        (mainDir + up * 1.5).Unit,
-        (mainDir + upDir * 1.5).Unit,
-        (mainDir - upDir * 1.5).Unit,
-        (mainDir + right * 1.5).Unit,
-        (mainDir - right * 1.5).Unit,
-        (mainDir + up * 2 + right).Unit,
-        (mainDir + up * 2 - right).Unit,
-        (mainDir - upDir * 2 + right).Unit,
-        (mainDir - upDir * 2 - right).Unit,
-        up,
-        (up + right * 0.5).Unit,
-        (up - right * 0.5).Unit,
-        right,
-        (-right),
-        (mainDir + up * 3).Unit,
-    }
-
-    for _, dir in ipairs(tryDirs) do
-        local hit = raycastCheck(origin, dir * checkDist, filterList)
-        if not hit then
-            return dir
-        end
-    end
-
-    return (mainDir + up * 3).Unit
-end
+local MAX_STEP = 42
 
 local function flyTo(targetPos, speed)
     stopCurrentFly()
@@ -172,24 +127,16 @@ local function flyTo(targetPos, speed)
 
     speed = speed or (S.AutoFarmSpeed or 60)
 
-    local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = V3new(mathhuge, mathhuge, mathhuge)
-    bv.Velocity = V3new(0, 0, 0)
-    bv.Parent = hrp
-
-    local bg = Instance.new("BodyGyro")
-    bg.MaxTorque = V3new(mathhuge, mathhuge, mathhuge)
-    bg.P = 9e4
-    bg.CFrame = hrp.CFrame
-    bg.Parent = hrp
-
     local alive = true
+
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
         pcall(function()
             if ch and ch.Parent then
                 for _, p in pairs(ch:GetDescendants()) do
-                    if p:IsA("BasePart") then p.CanCollide = false end
+                    if p:IsA("BasePart") then
+                        p.CanCollide = false
+                    end
                 end
             end
         end)
@@ -198,78 +145,31 @@ local function flyTo(targetPos, speed)
     currentFlyCleanup = function()
         alive = false
         pcall(function() noclipConn:Disconnect() end)
-        pcall(function() bv:Destroy() end)
-        pcall(function() bg:Destroy() end)
     end
-
-    local filterList = {ch}
-    local stuckCounter = 0
-    local lastPos = hrp.Position
-    local rayDist = 20
-    local avoidDir = nil
-    local avoidTicks = 0
 
     while alive and SD.AutoFarmActive do
         if not ch or not ch.Parent or not hrp or not hrp.Parent then break end
         local myPos = hrp.Position
         local dist = (myPos - targetPos).Magnitude
-        if dist < 10 then break end
+        if dist < 6 then break end
 
-        local mainDir = (targetPos - myPos).Unit
-        local moveDir = mainDir
-
-        if avoidTicks > 0 and avoidDir then
-            avoidTicks = avoidTicks - 1
-            moveDir = avoidDir
-            if avoidTicks <= 0 then
-                avoidDir = nil
-            end
-        else
-            local forwardCheck = raycastCheck(myPos, mainDir * rayDist, filterList)
-            if forwardCheck then
-                local wallDist = (forwardCheck.Position - myPos).Magnitude
-                if wallDist < rayDist then
-                    avoidDir = findAvoidDirection(myPos, mainDir, filterList, rayDist)
-                    avoidTicks = math.max(5, mathfloor(15 * (1 - wallDist / rayDist)))
-                    moveDir = avoidDir
-                end
-            end
-
-            local closeCheck = raycastCheck(myPos, mainDir * 6, filterList)
-            if closeCheck then
-                avoidDir = findAvoidDirection(myPos, mainDir, filterList, rayDist)
-                avoidTicks = 10
-                moveDir = avoidDir
-            end
+        local dir = (targetPos - myPos).Unit
+        local dt = task.wait()
+        local step = speed * dt
+        if step > MAX_STEP then
+            step = MAX_STEP
+        end
+        if step > dist then
+            step = dist
         end
 
-        local moved = (myPos - lastPos).Magnitude
-        if moved < 0.3 then
-            stuckCounter = stuckCounter + 1
-        else
-            stuckCounter = 0
-        end
-
-        if stuckCounter > 15 then
-            avoidDir = findAvoidDirection(myPos, mainDir, filterList, rayDist)
-            if not avoidDir then
-                avoidDir = V3new(0, 1, 0)
-            end
-            avoidTicks = 20
-            moveDir = avoidDir
-            stuckCounter = 0
-        end
-
-        lastPos = myPos
-        bv.Velocity = moveDir * speed
-        bg.CFrame = CFnew(myPos, myPos + moveDir)
-        task.wait()
+        local newPos = myPos + dir * step
+        hrp.CFrame = CFnew(newPos, newPos + dir)
+        pcall(function() hrp.Velocity = V3new(0, 0, 0) end)
+        pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
+        pcall(function() hrp.AssemblyAngularVelocity = V3new(0, 0, 0) end)
     end
 
-    if alive then
-        pcall(function() bv.Velocity = V3new(0, 0, 0) end)
-        task.wait(0.3)
-    end
     stopCurrentFly()
 end
 
@@ -416,9 +316,9 @@ local function interactPromptNear(name, actionText)
                 local pp = findProximityPrompt(part, actionText) or findProximityPrompt(part.Parent, actionText)
                 if pp then
                     local pos = part.Position
-                    if (hrp.Position - pos).Magnitude > 12 then
-                        flyTo(pos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
-                        task.wait(0.5)
+                    if (hrp.Position - pos).Magnitude > 8 then
+                        flyTo(pos, S.AutoFarmSpeed or 120)
+                        task.wait(0.3)
                     end
                     fireProximityPrompt(pp)
                     return true
@@ -430,9 +330,9 @@ local function interactPromptNear(name, actionText)
         local pp = findProximityPrompt(target, actionText)
         if pp then
             local pos = getPartPosition(target)
-            if pos and (hrp.Position - pos).Magnitude > 12 then
-                flyTo(pos + V3new(0, 3, 3), S.AutoFarmSpeed or 120)
-                task.wait(0.5)
+            if pos and (hrp.Position - pos).Magnitude > 8 then
+                flyTo(pos, S.AutoFarmSpeed or 120)
+                task.wait(0.3)
             end
             fireProximityPrompt(pp)
             return true
@@ -512,7 +412,7 @@ local function doRingFarmCycle()
     setStatus("Кольца: лечу к магазину...")
     local marketPos = findAreaPosition({"BlackMarket","Black Market","GoodsMarket","Market","Shop","Jewelry","JewelryShop"})
     if marketPos then
-        flyTo(marketPos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
+        flyTo(marketPos, S.AutoFarmSpeed or 120)
         task.wait(0.5)
     end
     for i = 1, 5 do
@@ -525,7 +425,7 @@ local function doRingFarmCycle()
     setStatus("Кольца: лечу к продавцу...")
     local sellerPos = findAreaPosition({"Smuggled Goods Seller","GoodsSeller","Seller","SellGoods","SmuggledGoods"})
     if sellerPos then
-        flyTo(sellerPos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
+        flyTo(sellerPos, S.AutoFarmSpeed or 120)
         task.wait(0.5)
     end
     sellGoods()
@@ -534,7 +434,7 @@ local function doRingFarmCycle()
     setStatus("Кольца: лечу отмывать...")
     local launderPos = findAreaPosition({"Launder","MoneyWash","Money Wash","Wash","Laundering"})
     if launderPos then
-        flyTo(launderPos + V3new(0, 3, 0), S.AutoFarmSpeed or 120)
+        flyTo(launderPos, S.AutoFarmSpeed or 120)
         task.wait(0.5)
     end
     launderMoney()

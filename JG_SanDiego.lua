@@ -125,89 +125,82 @@ local function flyTo(targetPos, speed)
     if not hrp or not hum then return end
 
     speed = speed or (S.AutoFarmSpeed or 120)
-
     local alive = true
-    local stepCount = 0
-    local flyTime = 0
-    local isPaused = false
-    
+    local lastGroundTouch = tick()
+    local GROUND_INTERVAL = 2.35 -- КРИТИЧНО: должно быть сильно меньше 4.1
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+    rayParams.FilterDescendantsInstances = {ch}
+
     local noclipConn = RS.Stepped:Connect(function()
         if not alive then return end
         pcall(function()
-            if ch and hrp then
-                for _, part in ipairs(ch:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
-                    end
+            for _, part in ipairs(ch:GetDescendants()) do
+                if part:IsA("BasePart") and part.CanCollide then
+                    part.CanCollide = false
                 end
-                hrp.Velocity = V3new(0, 0, 0)
-                hrp.RotVelocity = V3new(0, 0, 0)
-                hum:ChangeState(Enum.HumanoidStateType.Running)
             end
+            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            hum:ChangeState(Enum.HumanoidStateType.RunningNoPhysics)
         end)
     end)
 
     currentFlyCleanup = function()
         alive = false
         pcall(function() noclipConn:Disconnect() end)
-        pcall(function()
-            if hum then
-                hum:ChangeState(Enum.HumanoidStateType.Landed)
-            end
-        end)
+        pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
     end
 
     while alive and SD.AutoFarmActive do
-        if not ch or not ch.Parent or not hrp or not hrp.Parent then break end
+        if not (ch and ch.Parent and hrp and hrp.Parent) then break end
+
         local myPos = hrp.Position
         local dist = (myPos - targetPos).Magnitude
         if dist < 6 then break end
-        
-        if not isPaused and flyTime >= 3.8 then
-            isPaused = true
-            hum:ChangeState(Enum.HumanoidStateType.Landed)
-            pcall(function() hrp.Velocity = V3new(0, -2, 0) end)
-            task.wait(0.2)
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
-            flyTime = 0
-            isPaused = false
-        end
-        
-        local dir = (targetPos - myPos).Unit
-        local dt = task.wait()
-        local step = speed * dt
-        if step > 15 then step = 15 end
-        if step > dist then step = dist end
-        
-        local newPos = myPos + dir * step
-        
-        local ray = RaycastParams.new()
-        ray.FilterType = Enum.RaycastFilterType.Blacklist
-        ray.FilterDescendantsInstances = {ch}
-        local hit = ws:Raycast(newPos + V3new(0, 5, 0), V3new(0, -12, 0), ray)
-        
-        if hit then
-            local groundY = hit.Position.Y
-            if newPos.Y > groundY + 4 then
-                newPos = V3new(newPos.X, groundY + 2.5, newPos.Z)
-            elseif newPos.Y < groundY + 1.5 then
-                newPos = V3new(newPos.X, groundY + 2.5, newPos.Z)
+
+        -- ==================== АНТИ-ДЕТЕКТ ====================
+        if tick() - lastGroundTouch > GROUND_INTERVAL then
+            local downRay = workspace:Raycast(myPos + Vector3.new(0, 6, 0), Vector3.new(0, -80, 0), rayParams)
+            
+            if downRay then
+                -- Сильно прижимаемся к земле на несколько кадров
+                local groundPos = downRay.Position + Vector3.new(0, 2.8, 0)
+                hrp.CFrame = CFrame.lookAt(groundPos, groundPos + (targetPos - groundPos).Unit)
+                
+                hum:ChangeState(Enum.HumanoidStateType.Landed)
+                task.wait(0.12) -- Даём античиту время увидеть землю
+                
+                -- Короткий импульс вверх, чтобы продолжить полёт
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                hrp.AssemblyLinearVelocity = Vector3.new(0, 18, 0)
+                
+                lastGroundTouch = tick()
             end
         end
-        
-        if stepCount % 5 == 0 then
+        -- ====================================================
+
+        local dir = (targetPos - myPos).Unit
+        local dt = task.wait()
+
+        local step = math.min(speed * dt, 15, dist)
+        local newPos = myPos + dir * step
+
+        -- Корректировка по высоте (мягче чем раньше)
+        local heightRay = workspace:Raycast(newPos + Vector3.new(0, 12, 0), Vector3.new(0, -30, 0), rayParams)
+        if heightRay then
+            local idealY = heightRay.Position.Y + 3.2
+            newPos = Vector3.new(newPos.X, idealY, newPos.Z)
+        end
+
+        hrp.CFrame = CFrame.lookAt(newPos, newPos + dir)
+        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+
+        -- Дополнительная имитация прыжков
+        if math.random(1, 6) == 1 then
             hum:ChangeState(Enum.HumanoidStateType.Jumping)
         end
-        
-        hrp.CFrame = CFnew(newPos, newPos + dir)
-        pcall(function() hrp.Velocity = V3new(0, 0, 0) end)
-        pcall(function() hrp.AssemblyLinearVelocity = V3new(0, 0, 0) end)
-        pcall(function() hrp.AssemblyAngularVelocity = V3new(0, 0, 0) end)
-        
-        stepCount = stepCount + 1
-        flyTime = flyTime + dt
-        
-        task.wait(0.04)
     end
 
     stopCurrentFly()
